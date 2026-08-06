@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package forge.v1;
+
+import "forge/v1/common.proto";
+import "forge/v1/issue.proto";
+import "forge/v1/repo.proto";
+import "forge/v1/user.proto";
+
+// Repo, issue, and user search run against D1 FTS5 indexes. Code search has no
+// index behind it — it walks the default branch's tree through the Artifacts
+// binding and is deliberately bounded, so treat its results as best-effort.
+enum SearchKind {
+  SEARCH_KIND_UNSPECIFIED = 0;
+  SEARCH_KIND_REPOS = 1;
+  SEARCH_KIND_ISSUES = 2;
+  SEARCH_KIND_USERS = 3;
+  SEARCH_KIND_CODE = 4;
+}
+
+message CodeMatch {
+  string repo_full_name = 1;
+  string path = 2;
+  string ref = 3;
+  int32 line_number = 4;
+  string line = 5;
+  // A couple of lines either side, for display.
+  repeated string context_before = 6;
+  repeated string context_after = 7;
+}
+
+message SearchRequest {
+  string query = 1;
+  SearchKind kind = 2;
+  // Restrict to one owner, or one repo when both are set.
+  optional string owner = 3;
+  optional string repo = 4;
+  optional string language = 5;
+  PageRequest page = 6;
+}
+
+message SearchResponse {
+  repeated Repo repos = 1;
+  repeated Issue issues = 2;
+  repeated User users = 3;
+  repeated CodeMatch code = 4;
+  PageResponse page = 5;
+  // True when a code search hit its traversal budget before finishing.
+  bool truncated = 6;
+  int32 took_ms = 7;
+}
+
+service SearchService {
+  rpc Search(SearchRequest) returns (SearchResponse);
+}

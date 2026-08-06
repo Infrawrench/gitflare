@@ -1,0 +1,159 @@
+syntax = "proto3";
+
+package forge.v1;
+
+import "forge/v1/common.proto";
+import "forge/v1/user.proto";
+import "google/protobuf/timestamp.proto";
+
+message Org {
+  string id = 1;
+  string login = 2;
+  string display_name = 3;
+  string description = 4;
+  string avatar_url = 5;
+  Visibility visibility = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+enum OrgRole {
+  ORG_ROLE_UNSPECIFIED = 0;
+  ORG_ROLE_MEMBER = 1;
+  ORG_ROLE_OWNER = 2;
+}
+
+message OrgMember {
+  User user = 1;
+  OrgRole role = 2;
+}
+
+// A team grants one Permission level across the repos assigned to it. A user's
+// effective permission on a repo is the maximum over their direct collaborator
+// grant and every team they belong to.
+message Team {
+  string id = 1;
+  string org_login = 2;
+  string name = 3;
+  string description = 4;
+  Permission permission = 5;
+  // Every repo in the org, including ones created later.
+  bool includes_all_repos = 6;
+  int32 member_count = 7;
+  int32 repo_count = 8;
+}
+
+message CreateOrgRequest {
+  string login = 1;
+  string display_name = 2;
+  string description = 3;
+  Visibility visibility = 4;
+}
+message CreateOrgResponse { Org org = 1; }
+
+message GetOrgRequest { string login = 1; }
+message GetOrgResponse {
+  Org org = 1;
+  OrgRole viewer_role = 2;
+}
+
+message ListOrgsRequest {
+  // Empty means "orgs the caller belongs to".
+  optional string user_login = 1;
+  PageRequest page = 2;
+}
+message ListOrgsResponse {
+  repeated Org orgs = 1;
+  PageResponse page = 2;
+}
+
+message UpdateOrgRequest {
+  string login = 1;
+  optional string display_name = 2;
+  optional string description = 3;
+  optional Visibility visibility = 4;
+}
+message UpdateOrgResponse { Org org = 1; }
+
+message DeleteOrgRequest { string login = 1; }
+message DeleteOrgResponse {}
+
+message ListOrgMembersRequest {
+  string org_login = 1;
+  PageRequest page = 2;
+}
+message ListOrgMembersResponse {
+  repeated OrgMember members = 1;
+  PageResponse page = 2;
+}
+
+message AddOrgMemberRequest {
+  string org_login = 1;
+  string user_login = 2;
+  OrgRole role = 3;
+}
+message AddOrgMemberResponse { OrgMember member = 1; }
+
+message RemoveOrgMemberRequest {
+  string org_login = 1;
+  string user_login = 2;
+}
+message RemoveOrgMemberResponse {}
+
+message ListTeamsRequest { string org_login = 1; }
+message ListTeamsResponse { repeated Team teams = 1; }
+
+message CreateTeamRequest {
+  string org_login = 1;
+  string name = 2;
+  string description = 3;
+  Permission permission = 4;
+  bool includes_all_repos = 5;
+}
+message CreateTeamResponse { Team team = 1; }
+
+message UpdateTeamRequest {
+  string team_id = 1;
+  optional string name = 2;
+  optional string description = 3;
+  optional Permission permission = 4;
+  optional bool includes_all_repos = 5;
+}
+message UpdateTeamResponse { Team team = 1; }
+
+message DeleteTeamRequest { string team_id = 1; }
+message DeleteTeamResponse {}
+
+message SetTeamMemberRequest {
+  string team_id = 1;
+  string user_login = 2;
+  // False removes the membership.
+  bool member = 3;
+}
+message SetTeamMemberResponse {}
+
+message SetTeamRepoRequest {
+  string team_id = 1;
+  string repo_owner = 2;
+  string repo_name = 3;
+  bool granted = 4;
+}
+message SetTeamRepoResponse {}
+
+service OrgService {
+  rpc CreateOrg(CreateOrgRequest) returns (CreateOrgResponse);
+  rpc GetOrg(GetOrgRequest) returns (GetOrgResponse);
+  rpc ListOrgs(ListOrgsRequest) returns (ListOrgsResponse);
+  rpc UpdateOrg(UpdateOrgRequest) returns (UpdateOrgResponse);
+  rpc DeleteOrg(DeleteOrgRequest) returns (DeleteOrgResponse);
+
+  rpc ListOrgMembers(ListOrgMembersRequest) returns (ListOrgMembersResponse);
+  rpc AddOrgMember(AddOrgMemberRequest) returns (AddOrgMemberResponse);
+  rpc RemoveOrgMember(RemoveOrgMemberRequest) returns (RemoveOrgMemberResponse);
+
+  rpc ListTeams(ListTeamsRequest) returns (ListTeamsResponse);
+  rpc CreateTeam(CreateTeamRequest) returns (CreateTeamResponse);
+  rpc UpdateTeam(UpdateTeamRequest) returns (UpdateTeamResponse);
+  rpc DeleteTeam(DeleteTeamRequest) returns (DeleteTeamResponse);
+  rpc SetTeamMember(SetTeamMemberRequest) returns (SetTeamMemberResponse);
+  rpc SetTeamRepo(SetTeamRepoRequest) returns (SetTeamRepoResponse);
+}

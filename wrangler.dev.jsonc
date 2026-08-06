@@ -1,0 +1,50 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Local development config.
+  //
+  // Identical to wrangler.jsonc except that it omits the `artifacts` binding and
+  // the CI service binding. The Artifacts binding has no local simulation, so
+  // the Vite plugin opens a remote proxy session for it — which fails outright
+  // on an account without beta access:
+  //
+  //   You do not have access to use Artifacts. Please ensure it is enabled.
+  //   [code: 10015]
+  //
+  // and takes the dev server down with it. Without the binding, ArtifactsClient
+  // reports the same "git storage unavailable" gate it would report on a gated
+  // account, so the UI, accounts, and repository metadata all remain workable
+  // locally. Used by `pnpm dev`; `pnpm build` uses wrangler.jsonc.
+  "name": "gitflare-dev",
+  "main": "src/server.ts",
+  "compatibility_date": "2026-08-06",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "vars": {
+    "ARTIFACTS_NAMESPACE": "gitflare",
+    // Access cannot front localhost, so dev falls back to local sessions.
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": "",
+    "GITFLARE_URL": "http://localhost:5173",
+    "CLOUDFLARE_ACCOUNT_ID": "00000000000000000000000000000000",
+    "CF_API_TOKEN": ""
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "gitflare",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "kv_namespaces": [{ "binding": "CACHE", "id": "dev-cache" }],
+  "r2_buckets": [{ "binding": "ASSETS_BUCKET", "bucket_name": "gitflare-assets" }],
+  "queues": {
+    "producers": [{ "binding": "WEBHOOKS", "queue": "gitflare-webhooks" }]
+  },
+
+  "durable_objects": {
+    "bindings": [{ "name": "CI_LOGS", "class_name": "CiLogStream" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["CiLogStream"] }]
+}

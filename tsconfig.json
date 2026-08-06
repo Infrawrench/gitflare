@@ -1,0 +1,55 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // `node` is required because @cloudflare/ci ships raw TypeScript that imports
+    // node:path; without it, typechecking the dependency fails.
+    // `@cloudflare/vitest-pool-workers/types` declares the `cloudflare:test`
+    // module that worker tests import.
+    "types": [
+      "@cloudflare/workers-types",
+      "@cloudflare/vitest-pool-workers/types",
+      "vite/client",
+      "node"
+    ],
+
+    "jsx": "react-jsx",
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    // Deliberately off. @cloudflare/ci publishes its `src/*.ts` rather than a
+    // built .d.ts, so tsc typechecks the dependency's source alongside ours, and
+    // that source is not written for exactOptionalPropertyTypes. skipLibCheck
+    // does not help — it only covers .d.ts files. Re-enable if the package ever
+    // ships declarations.
+    "exactOptionalPropertyTypes": false,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+
+    "allowJs": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+
+    // TypeScript 7 removed `baseUrl`; paths now resolve relative to this file.
+    "paths": {
+      "~/*": ["./src/*"],
+      "@gitflare/ci-config": ["./packages/ci-config/src/index.ts"]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "ci/**/*.ts",
+    "ssh/**/*.ts",
+    "packages/**/*.ts",
+    "test/**/*.ts",
+    "vite.config.ts",
+    "worker-configuration.d.ts"
+  ],
+  "exclude": ["node_modules", "dist", ".wrangler"]
+}

@@ -1,0 +1,300 @@
+syntax = "proto3";
+
+package forge.v1;
+
+import "forge/v1/common.proto";
+import "forge/v1/issue.proto";
+import "forge/v1/user.proto";
+import "google/protobuf/timestamp.proto";
+
+enum PullState {
+  PULL_STATE_UNSPECIFIED = 0;
+  PULL_STATE_OPEN = 1;
+  PULL_STATE_CLOSED = 2;
+  PULL_STATE_MERGED = 3;
+}
+
+enum MergeMethod {
+  MERGE_METHOD_UNSPECIFIED = 0;
+  MERGE_METHOD_MERGE = 1;
+  MERGE_METHOD_SQUASH = 2;
+  MERGE_METHOD_REBASE = 3;
+}
+
+// Whether the head can currently be merged into the base. Computed on read and
+// never cached, since either branch can move between requests.
+enum MergeableState {
+  MERGEABLE_STATE_UNSPECIFIED = 0;
+  MERGEABLE_STATE_CLEAN = 1;
+  MERGEABLE_STATE_CONFLICTED = 2;
+  MERGEABLE_STATE_BEHIND = 3;
+  MERGEABLE_STATE_BLOCKED = 4;
+  // Head and base already point at the same commit.
+  MERGEABLE_STATE_EMPTY = 5;
+  MERGEABLE_STATE_UNKNOWN = 6;
+}
+
+message PullBranch {
+  // "owner/repo" — differs from the base for cross-fork pull requests.
+  string repo_full_name = 1;
+  string branch = 2;
+  string sha = 3;
+}
+
+message PullRequest {
+  string id = 1;
+  int32 number = 2;
+  string title = 3;
+  string body = 4;
+  PullState state = 5;
+  User author = 6;
+
+  PullBranch base = 7;
+  PullBranch head = 8;
+  // Merge base of head and base at read time.
+  string merge_base_sha = 9;
+  MergeableState mergeable = 10;
+
+  bool draft = 11;
+  repeated Label labels = 12;
+  repeated User assignees = 13;
+  repeated User requested_reviewers = 14;
+  optional Milestone milestone = 15;
+
+  int32 comment_count = 16;
+  int32 commit_count = 17;
+  int32 changed_files = 18;
+  int32 additions = 19;
+  int32 deletions = 20;
+
+  google.protobuf.Timestamp created_at = 21;
+  google.protobuf.Timestamp updated_at = 22;
+  optional google.protobuf.Timestamp merged_at = 23;
+  optional google.protobuf.Timestamp closed_at = 24;
+  optional string merge_commit_sha = 25;
+  optional User merged_by = 26;
+}
+
+enum FileStatus {
+  FILE_STATUS_UNSPECIFIED = 0;
+  FILE_STATUS_ADDED = 1;
+  FILE_STATUS_MODIFIED = 2;
+  FILE_STATUS_DELETED = 3;
+  FILE_STATUS_RENAMED = 4;
+}
+
+enum LineKind {
+  LINE_KIND_UNSPECIFIED = 0;
+  LINE_KIND_CONTEXT = 1;
+  LINE_KIND_ADD = 2;
+  LINE_KIND_DELETE = 3;
+}
+
+message DiffLine {
+  LineKind kind = 1;
+  string content = 2;
+  // Zero where the line does not exist on that side.
+  int32 old_line = 3;
+  int32 new_line = 4;
+}
+
+message DiffHunk {
+  int32 old_start = 1;
+  int32 old_lines = 2;
+  int32 new_start = 3;
+  int32 new_lines = 4;
+  string header = 5;
+  repeated DiffLine lines = 6;
+}
+
+message FileDiff {
+  string path = 1;
+  optional string previous_path = 2;
+  FileStatus status = 3;
+  int32 additions = 4;
+  int32 deletions = 5;
+  bool is_binary = 6;
+  // True when the file exceeded the diff budget; hunks will be empty.
+  bool truncated = 7;
+  repeated DiffHunk hunks = 8;
+  string old_sha = 9;
+  string new_sha = 10;
+}
+
+enum ReviewState {
+  REVIEW_STATE_UNSPECIFIED = 0;
+  REVIEW_STATE_COMMENTED = 1;
+  REVIEW_STATE_APPROVED = 2;
+  REVIEW_STATE_CHANGES_REQUESTED = 3;
+}
+
+message ReviewComment {
+  string id = 1;
+  User author = 2;
+  string body = 3;
+  string body_html = 4;
+  string path = 5;
+  // Line number on the head side; 0 for a file-level comment.
+  int32 line = 6;
+  bool outdated = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message Review {
+  string id = 1;
+  User author = 2;
+  ReviewState state = 3;
+  string body = 4;
+  string body_html = 5;
+  repeated ReviewComment comments = 6;
+  string commit_sha = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message ListPullsRequest {
+  string owner = 1;
+  string repo = 2;
+  optional PullState state = 3;
+  optional string author = 4;
+  optional string base_branch = 5;
+  repeated string labels = 6;
+  optional string query = 7;
+  PageRequest page = 8;
+}
+message ListPullsResponse {
+  repeated PullRequest pulls = 1;
+  PageResponse page = 2;
+  int32 open_count = 3;
+  int32 closed_count = 4;
+}
+
+message GetPullRequest {
+  string owner = 1;
+  string repo = 2;
+  int32 number = 3;
+}
+message GetPullResponse { PullRequest pull = 1; }
+
+message CreatePullRequest {
+  string owner = 1;
+  string repo = 2;
+  string title = 3;
+  string body = 4;
+  string base_branch = 5;
+  // "branch" for same-repo, or "owner:branch" for a cross-fork request.
+  string head = 6;
+  bool draft = 7;
+}
+message CreatePullResponse { PullRequest pull = 1; }
+
+message UpdatePullRequest {
+  string owner = 1;
+  string repo = 2;
+  int32 number = 3;
+  optional string title = 4;
+  optional string body = 5;
+  optional PullState state = 6;
+  optional bool draft = 7;
+  optional string base_branch = 8;
+}
+message UpdatePullResponse { PullRequest pull = 1; }
+
+message GetPullDiffRequest {
+  string owner = 1;
+  string repo = 2;
+  int32 number = 3;
+  // Restrict to a single file; empty returns the whole diff.
+  string path = 4;
+  int32 context_lines = 5;
+}
+message GetPullDiffResponse {
+  repeated FileDiff files = 1;
+  int32 total_additions = 2;
+  int32 total_deletions = 3;
+  // True when the file count exceeded the budget and `files` was cut short.
+  bool truncated = 4;
+}
+
+message CompareRequest {
+  string owner = 1;
+  string repo = 2;
+  string base = 3;
+  string head = 4;
+  int32 context_lines = 5;
+}
+message CompareResponse {
+  repeated Commit commits = 1;
+  repeated FileDiff files = 2;
+  string merge_base_sha = 3;
+  bool truncated = 4;
+}
+
+message ListPullCommitsRequest {
+  string owner = 1;
+  string repo = 2;
+  int32 number = 3;
+}
+message ListPullCommitsResponse { repeated Commit commits = 1; }
+
+message MergePullRequest {
+  string owner = 1;
+  string repo = 2;
+  int32 number = 3;
+  MergeMethod method = 4;
+  string commit_title = 5;
+  string commit_message = 6;
+  // Refuse the merge if head has moved since the client last read it.
+  optional string expected_head_sha = 7;
+  bool delete_branch = 8;
+}
+message MergePullResponse {
+  PullRequest pull = 1;
+  string merge_commit_sha = 2;
+}
+
+message ListReviewsRequest {
+  string owner = 1;
+  string repo = 2;
+  int32 number = 3;
+}
+message ListReviewsResponse { repeated Review reviews = 1; }
+
+message PendingReviewComment {
+  string path = 1;
+  int32 line = 2;
+  string body = 3;
+}
+
+message CreateReviewRequest {
+  string owner = 1;
+  string repo = 2;
+  int32 number = 3;
+  ReviewState state = 4;
+  string body = 5;
+  repeated PendingReviewComment comments = 6;
+}
+message CreateReviewResponse { Review review = 1; }
+
+message RequestReviewersRequest {
+  string owner = 1;
+  string repo = 2;
+  int32 number = 3;
+  repeated string reviewer_logins = 4;
+  bool remove = 5;
+}
+message RequestReviewersResponse {}
+
+service PullService {
+  rpc ListPulls(ListPullsRequest) returns (ListPullsResponse);
+  rpc GetPull(GetPullRequest) returns (GetPullResponse);
+  rpc CreatePull(CreatePullRequest) returns (CreatePullResponse);
+  rpc UpdatePull(UpdatePullRequest) returns (UpdatePullResponse);
+  rpc GetPullDiff(GetPullDiffRequest) returns (GetPullDiffResponse);
+  rpc Compare(CompareRequest) returns (CompareResponse);
+  rpc ListPullCommits(ListPullCommitsRequest) returns (ListPullCommitsResponse);
+  rpc MergePull(MergePullRequest) returns (MergePullResponse);
+
+  rpc ListReviews(ListReviewsRequest) returns (ListReviewsResponse);
+  rpc CreateReview(CreateReviewRequest) returns (CreateReviewResponse);
+  rpc RequestReviewers(RequestReviewersRequest) returns (RequestReviewersResponse);
+}

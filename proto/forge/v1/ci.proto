@@ -1,0 +1,142 @@
+syntax = "proto3";
+
+package forge.v1;
+
+import "forge/v1/common.proto";
+import "forge/v1/user.proto";
+import "google/protobuf/timestamp.proto";
+
+enum RunStatus {
+  RUN_STATUS_UNSPECIFIED = 0;
+  RUN_STATUS_QUEUED = 1;
+  RUN_STATUS_RUNNING = 2;
+  RUN_STATUS_SUCCESS = 3;
+  RUN_STATUS_FAILURE = 4;
+  RUN_STATUS_CANCELLED = 5;
+  // The step's command was skipped because its cache key matched.
+  RUN_STATUS_CACHED = 6;
+}
+
+enum TriggerKind {
+  TRIGGER_KIND_UNSPECIFIED = 0;
+  TRIGGER_KIND_PUSH = 1;
+  TRIGGER_KIND_TAG = 2;
+  TRIGGER_KIND_MANUAL = 3;
+}
+
+message RunStep {
+  string id = 1;
+  string name = 2;
+  string command = 3;
+  RunStatus status = 4;
+  int32 exit_code = 5;
+  // Names of the steps this one waited on.
+  repeated string needs = 6;
+  optional google.protobuf.Timestamp started_at = 7;
+  optional google.protobuf.Timestamp finished_at = 8;
+  // Workflow step attempt; >1 means Workflows retried the command.
+  int32 attempt = 9;
+  bool cache_hit = 10;
+}
+
+message Run {
+  string id = 1;
+  int32 number = 2;
+  string repo_full_name = 3;
+  // Cloudflare Workflows instance ID, derived deterministically from the source
+  // commit, so re-delivering a push event cannot start a duplicate run.
+  string workflow_instance_id = 4;
+
+  RunStatus status = 5;
+  TriggerKind trigger = 6;
+  string ref = 7;
+  optional string branch = 8;
+  optional string tag = 9;
+  string sha = 10;
+  string commit_message = 11;
+  optional User actor = 12;
+
+  repeated RunStep steps = 13;
+  optional google.protobuf.Timestamp started_at = 14;
+  optional google.protobuf.Timestamp finished_at = 15;
+  google.protobuf.Timestamp created_at = 16;
+  // Populated when the pipeline failed before any step ran — usually a
+  // malformed or missing .gitflare/ci.ts.
+  optional string error = 17;
+}
+
+message ListRunsRequest {
+  string owner = 1;
+  string repo = 2;
+  optional string branch = 3;
+  optional RunStatus status = 4;
+  PageRequest page = 5;
+}
+message ListRunsResponse {
+  repeated Run runs = 1;
+  PageResponse page = 2;
+}
+
+message GetRunRequest {
+  string owner = 1;
+  string repo = 2;
+  int32 number = 3;
+}
+message GetRunResponse { Run run = 1; }
+
+message GetRunForCommitRequest {
+  string owner = 1;
+  string repo = 2;
+  string sha = 3;
+}
+message GetRunForCommitResponse { optional Run run = 1; }
+
+message LogChunk {
+  string step_name = 1;
+  string text = 2;
+  bool is_stderr = 3;
+  int64 sequence = 4;
+  google.protobuf.Timestamp at = 5;
+}
+
+message StreamRunLogsRequest {
+  string owner = 1;
+  string repo = 2;
+  int32 number = 3;
+  // Limit to a single step; empty streams every step interleaved.
+  string step_name = 4;
+  // Resume point. Send the last sequence you received to avoid replaying.
+  int64 after_sequence = 5;
+}
+
+// Server-streaming: open for the life of the run, then completes. Reaches the
+// browser as gRPC-web and native gRPC clients unchanged, since Cloudflare
+// translates between the two at the edge.
+message StreamRunLogsResponse {
+  LogChunk chunk = 1;
+  // Terminal frame: the run finished and no more chunks follow.
+  optional RunStatus final_status = 2;
+}
+
+message RerunRequest {
+  string owner = 1;
+  string repo = 2;
+  int32 number = 3;
+}
+message RerunResponse { Run run = 1; }
+
+message CancelRunRequest {
+  string owner = 1;
+  string repo = 2;
+  int32 number = 3;
+}
+message CancelRunResponse { Run run = 1; }
+
+service CIService {
+  rpc ListRuns(ListRunsRequest) returns (ListRunsResponse);
+  rpc GetRun(GetRunRequest) returns (GetRunResponse);
+  rpc GetRunForCommit(GetRunForCommitRequest) returns (GetRunForCommitResponse);
+  rpc StreamRunLogs(StreamRunLogsRequest) returns (stream StreamRunLogsResponse);
+  rpc Rerun(RerunRequest) returns (RerunResponse);
+  rpc CancelRun(CancelRunRequest) returns (CancelRunResponse);
+}

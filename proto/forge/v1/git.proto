@@ -1,0 +1,112 @@
+syntax = "proto3";
+
+package forge.v1;
+
+import "forge/v1/common.proto";
+
+enum EntryType {
+  ENTRY_TYPE_UNSPECIFIED = 0;
+  ENTRY_TYPE_FILE = 1;
+  ENTRY_TYPE_DIR = 2;
+  // A gitlink — a nested repository recorded as a commit entry in the tree.
+  ENTRY_TYPE_SUBMODULE = 3;
+  ENTRY_TYPE_SYMLINK = 4;
+}
+
+message TreeEntry {
+  string name = 1;
+  string path = 2;
+  EntryType type = 3;
+  // Git file mode, e.g. "100644".
+  string mode = 4;
+  string sha = 5;
+  optional int64 size = 6;
+}
+
+message Blob {
+  string sha = 1;
+  string path = 2;
+  int64 size = 3;
+  // Decoded text. Empty when `is_binary` or when the blob exceeds the inline
+  // limit, in which case the client should fetch /raw instead.
+  string text = 4;
+  bool is_binary = 5;
+  bool truncated = 6;
+  string language = 7;
+  string mime_type = 8;
+}
+
+message ListRefsRequest {
+  string owner = 1;
+  string repo = 2;
+  optional RefKind kind = 3;
+}
+message ListRefsResponse { repeated Ref refs = 1; }
+
+message GetTreeRequest {
+  string owner = 1;
+  string repo = 2;
+  // Branch, tag, or commit SHA.
+  string ref = 3;
+  string path = 4;
+  // Walk the whole subtree rather than one level.
+  bool recursive = 5;
+}
+message GetTreeResponse {
+  repeated TreeEntry entries = 1;
+  string resolved_sha = 2;
+  // True when a recursive walk stopped at the traversal budget.
+  bool truncated = 3;
+}
+
+message GetBlobRequest {
+  string owner = 1;
+  string repo = 2;
+  string ref = 3;
+  string path = 4;
+}
+message GetBlobResponse { Blob blob = 1; }
+
+message ListCommitsRequest {
+  string owner = 1;
+  string repo = 2;
+  string ref = 3;
+  // Artifacts' log API filters by ref only; path filtering is applied in the
+  // Worker after the fact and may return fewer than `limit` results.
+  optional string path = 4;
+  int32 limit = 5;
+  int32 offset = 6;
+}
+message ListCommitsResponse {
+  repeated Commit commits = 1;
+  bool has_more = 2;
+}
+
+message GetCommitRequest {
+  string owner = 1;
+  string repo = 2;
+  string sha = 3;
+}
+message GetCommitResponse { Commit commit = 1; }
+
+message GetReadmeRequest {
+  string owner = 1;
+  string repo = 2;
+  string ref = 3;
+  string path = 4;
+}
+message GetReadmeResponse {
+  // Absent when the directory has no recognised README.
+  optional Blob blob = 1;
+  // Server-rendered, sanitized HTML.
+  string html = 2;
+}
+
+service GitService {
+  rpc ListRefs(ListRefsRequest) returns (ListRefsResponse);
+  rpc GetTree(GetTreeRequest) returns (GetTreeResponse);
+  rpc GetBlob(GetBlobRequest) returns (GetBlobResponse);
+  rpc ListCommits(ListCommitsRequest) returns (ListCommitsResponse);
+  rpc GetCommit(GetCommitRequest) returns (GetCommitResponse);
+  rpc GetReadme(GetReadmeRequest) returns (GetReadmeResponse);
+}

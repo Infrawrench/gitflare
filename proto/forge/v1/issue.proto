@@ -1,0 +1,222 @@
+syntax = "proto3";
+
+package forge.v1;
+
+import "forge/v1/common.proto";
+import "forge/v1/user.proto";
+import "google/protobuf/timestamp.proto";
+
+enum IssueState {
+  ISSUE_STATE_UNSPECIFIED = 0;
+  ISSUE_STATE_OPEN = 1;
+  ISSUE_STATE_CLOSED = 2;
+}
+
+message Label {
+  string id = 1;
+  string name = 2;
+  // Six-digit hex, no leading '#'.
+  string color = 3;
+  string description = 4;
+}
+
+message Milestone {
+  string id = 1;
+  string title = 2;
+  string description = 3;
+  IssueState state = 4;
+  optional google.protobuf.Timestamp due_on = 5;
+  int32 open_issues = 6;
+  int32 closed_issues = 7;
+}
+
+message Issue {
+  string id = 1;
+  // Per-repo counter shared with pull requests, so #1 is unambiguous.
+  int32 number = 2;
+  string title = 3;
+  string body = 4;
+  IssueState state = 5;
+  User author = 6;
+  repeated Label labels = 7;
+  repeated User assignees = 8;
+  optional Milestone milestone = 9;
+  int32 comment_count = 10;
+  // True when this number belongs to a pull request. Clients should link to the
+  // PR view instead of the issue view.
+  bool is_pull_request = 11;
+  bool locked = 12;
+  google.protobuf.Timestamp created_at = 13;
+  google.protobuf.Timestamp updated_at = 14;
+  optional google.protobuf.Timestamp closed_at = 15;
+}
+
+message Comment {
+  string id = 1;
+  User author = 2;
+  string body = 3;
+  string body_html = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+  bool edited = 7;
+}
+
+message ListIssuesRequest {
+  string owner = 1;
+  string repo = 2;
+  optional IssueState state = 3;
+  repeated string labels = 4;
+  optional string assignee = 5;
+  optional string author = 6;
+  optional string milestone_id = 7;
+  optional string query = 8;
+  // Exclude pull requests. Defaults to true.
+  optional bool issues_only = 9;
+  PageRequest page = 10;
+}
+message ListIssuesResponse {
+  repeated Issue issues = 1;
+  PageResponse page = 2;
+  int32 open_count = 3;
+  int32 closed_count = 4;
+}
+
+message GetIssueRequest {
+  string owner = 1;
+  string repo = 2;
+  int32 number = 3;
+}
+message GetIssueResponse { Issue issue = 1; }
+
+message CreateIssueRequest {
+  string owner = 1;
+  string repo = 2;
+  string title = 3;
+  string body = 4;
+  repeated string label_ids = 5;
+  repeated string assignee_logins = 6;
+  optional string milestone_id = 7;
+}
+message CreateIssueResponse { Issue issue = 1; }
+
+message UpdateIssueRequest {
+  string owner = 1;
+  string repo = 2;
+  int32 number = 3;
+  optional string title = 4;
+  optional string body = 5;
+  optional IssueState state = 6;
+  optional bool locked = 7;
+  // Absent leaves the current set untouched; present replaces it wholesale.
+  repeated string label_ids = 8;
+  bool set_labels = 9;
+  repeated string assignee_logins = 10;
+  bool set_assignees = 11;
+  optional string milestone_id = 12;
+  bool clear_milestone = 13;
+}
+message UpdateIssueResponse { Issue issue = 1; }
+
+message ListCommentsRequest {
+  string owner = 1;
+  string repo = 2;
+  int32 number = 3;
+  PageRequest page = 4;
+}
+message ListCommentsResponse {
+  repeated Comment comments = 1;
+  PageResponse page = 2;
+}
+
+message CreateCommentRequest {
+  string owner = 1;
+  string repo = 2;
+  int32 number = 3;
+  string body = 4;
+}
+message CreateCommentResponse { Comment comment = 1; }
+
+message UpdateCommentRequest {
+  string comment_id = 1;
+  string body = 2;
+}
+message UpdateCommentResponse { Comment comment = 1; }
+
+message DeleteCommentRequest { string comment_id = 1; }
+message DeleteCommentResponse {}
+
+message ListLabelsRequest {
+  string owner = 1;
+  string repo = 2;
+}
+message ListLabelsResponse { repeated Label labels = 1; }
+
+message CreateLabelRequest {
+  string owner = 1;
+  string repo = 2;
+  string name = 3;
+  string color = 4;
+  string description = 5;
+}
+message CreateLabelResponse { Label label = 1; }
+
+message UpdateLabelRequest {
+  string label_id = 1;
+  optional string name = 2;
+  optional string color = 3;
+  optional string description = 4;
+}
+message UpdateLabelResponse { Label label = 1; }
+
+message DeleteLabelRequest { string label_id = 1; }
+message DeleteLabelResponse {}
+
+message ListMilestonesRequest {
+  string owner = 1;
+  string repo = 2;
+  optional IssueState state = 3;
+}
+message ListMilestonesResponse { repeated Milestone milestones = 1; }
+
+message CreateMilestoneRequest {
+  string owner = 1;
+  string repo = 2;
+  string title = 3;
+  string description = 4;
+  optional google.protobuf.Timestamp due_on = 5;
+}
+message CreateMilestoneResponse { Milestone milestone = 1; }
+
+message UpdateMilestoneRequest {
+  string milestone_id = 1;
+  optional string title = 2;
+  optional string description = 3;
+  optional IssueState state = 4;
+  optional google.protobuf.Timestamp due_on = 5;
+}
+message UpdateMilestoneResponse { Milestone milestone = 1; }
+
+message DeleteMilestoneRequest { string milestone_id = 1; }
+message DeleteMilestoneResponse {}
+
+service IssueService {
+  rpc ListIssues(ListIssuesRequest) returns (ListIssuesResponse);
+  rpc GetIssue(GetIssueRequest) returns (GetIssueResponse);
+  rpc CreateIssue(CreateIssueRequest) returns (CreateIssueResponse);
+  rpc UpdateIssue(UpdateIssueRequest) returns (UpdateIssueResponse);
+
+  rpc ListComments(ListCommentsRequest) returns (ListCommentsResponse);
+  rpc CreateComment(CreateCommentRequest) returns (CreateCommentResponse);
+  rpc UpdateComment(UpdateCommentRequest) returns (UpdateCommentResponse);
+  rpc DeleteComment(DeleteCommentRequest) returns (DeleteCommentResponse);
+
+  rpc ListLabels(ListLabelsRequest) returns (ListLabelsResponse);
+  rpc CreateLabel(CreateLabelRequest) returns (CreateLabelResponse);
+  rpc UpdateLabel(UpdateLabelRequest) returns (UpdateLabelResponse);
+  rpc DeleteLabel(DeleteLabelRequest) returns (DeleteLabelResponse);
+
+  rpc ListMilestones(ListMilestonesRequest) returns (ListMilestonesResponse);
+  rpc CreateMilestone(CreateMilestoneRequest) returns (CreateMilestoneResponse);
+  rpc UpdateMilestone(UpdateMilestoneRequest) returns (UpdateMilestoneResponse);
+  rpc DeleteMilestone(DeleteMilestoneRequest) returns (DeleteMilestoneResponse);
+}

@@ -1,0 +1,49 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Test-only Worker config. The production entrypoint is TanStack Start's
+  // server-entry, which pulls in the whole SSR runtime; tests only need the
+  // bindings, so this points at a bare module instead.
+  "name": "gitflare-test",
+  "main": "test/worker/entry.ts",
+  "compatibility_date": "2026-08-06",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "vars": {
+    "ARTIFACTS_NAMESPACE": "gitflare",
+    // Empty means "Access not configured", so tests exercise the local-session
+    // path. The Access verifier has its own tests with a generated JWKS.
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": "",
+    "GITFLARE_URL": "http://localhost:8787",
+    "CLOUDFLARE_ACCOUNT_ID": "00000000000000000000000000000000",
+    "CF_API_TOKEN": "test-token"
+  },
+
+  "d1_databases": [
+    { "binding": "DB", "database_name": "gitflare-test", "database_id": "test" }
+  ],
+  "kv_namespaces": [{ "binding": "CACHE", "id": "test-cache" }],
+  "r2_buckets": [{ "binding": "ASSETS_BUCKET", "bucket_name": "gitflare-test-assets" }],
+  "queues": {
+    "producers": [{ "binding": "WEBHOOKS", "queue": "gitflare-test-webhooks" }]
+  },
+  // The Sandbox container. Requires Docker locally; tests that use it skip
+  // themselves when it is unavailable rather than failing the suite.
+  "containers": [
+    {
+      "class_name": "GitflareSandbox",
+      "image": "./ci/Dockerfile",
+      "instance_type": "lite",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "CI_LOGS", "class_name": "CiLogStream" },
+      { "name": "SANDBOX", "class_name": "GitflareSandbox" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["CiLogStream", "GitflareSandbox"] }
+  ]
+}

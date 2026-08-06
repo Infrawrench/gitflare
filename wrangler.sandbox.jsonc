@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Local harness for verifying the Sandbox CI runner against a real container.
+  // Not deployed. See ci/dev-harness.ts for why this exists rather than a
+  // vitest integration test.
+  //
+  //   wrangler dev --config wrangler.sandbox.jsonc
+  //   curl -X POST localhost:8787 -H 'content-type: application/json' -d '{"demo":true}'
+  "name": "gitflare-sandbox-harness",
+  "main": "ci/dev-harness.ts",
+  "compatibility_date": "2026-08-06",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "containers": [
+    {
+      "class_name": "GitflareSandbox",
+      "image": "./ci/Dockerfile",
+      // Smallest instance that will run the image; this only echoes strings.
+      "instance_type": "lite",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "SANDBOX", "class_name": "GitflareSandbox" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GitflareSandbox"] }]
+}

@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package forge.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Cursor-based pagination. Mirrors the Artifacts binding's own cursor style so
+// repo listings can pass one straight through.
+message PageRequest {
+  int32 limit = 1;
+  string cursor = 2;
+}
+
+message PageResponse {
+  string next_cursor = 1;
+  // Absent when the underlying store cannot count cheaply (for example, an
+  // Artifacts repo listing).
+  optional int32 total = 2;
+}
+
+// Visibility is enforced in D1, not by Artifacts. Every Artifacts repo is
+// private at the storage layer and reached only through a minted token.
+enum Visibility {
+  VISIBILITY_UNSPECIFIED = 0;
+  VISIBILITY_PUBLIC = 1;
+  VISIBILITY_PRIVATE = 2;
+}
+
+// Permission levels, ordered so a numeric >= comparison is a valid check.
+enum Permission {
+  PERMISSION_UNSPECIFIED = 0;
+  PERMISSION_NONE = 1;
+  PERMISSION_READ = 2;
+  PERMISSION_TRIAGE = 3;
+  PERMISSION_WRITE = 4;
+  PERMISSION_MAINTAIN = 5;
+  PERMISSION_ADMIN = 6;
+}
+
+message Owner {
+  string id = 1;
+  string login = 2;
+  string display_name = 3;
+  string avatar_url = 4;
+  bool is_org = 5;
+}
+
+message Signature {
+  string name = 1;
+  string email = 2;
+  google.protobuf.Timestamp time = 3;
+}
+
+message Commit {
+  string sha = 1;
+  string message = 2;
+  Signature author = 3;
+  Signature committer = 4;
+  repeated string parents = 5;
+  string tree_sha = 6;
+}
+
+enum RefKind {
+  REF_KIND_UNSPECIFIED = 0;
+  REF_KIND_BRANCH = 1;
+  REF_KIND_TAG = 2;
+}
+
+message Ref {
+  string name = 1;
+  RefKind kind = 2;
+  string sha = 3;
+  bool is_default = 4;
+}

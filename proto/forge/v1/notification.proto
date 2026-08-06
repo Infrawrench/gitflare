@@ -1,0 +1,89 @@
+syntax = "proto3";
+
+package forge.v1;
+
+import "forge/v1/common.proto";
+import "forge/v1/user.proto";
+import "google/protobuf/timestamp.proto";
+
+enum NotificationReason {
+  NOTIFICATION_REASON_UNSPECIFIED = 0;
+  NOTIFICATION_REASON_ASSIGN = 1;
+  NOTIFICATION_REASON_AUTHOR = 2;
+  NOTIFICATION_REASON_COMMENT = 3;
+  NOTIFICATION_REASON_MENTION = 4;
+  NOTIFICATION_REASON_REVIEW_REQUESTED = 5;
+  NOTIFICATION_REASON_WATCHING = 6;
+  NOTIFICATION_REASON_CI_FAILURE = 7;
+}
+
+enum SubjectType {
+  SUBJECT_TYPE_UNSPECIFIED = 0;
+  SUBJECT_TYPE_ISSUE = 1;
+  SUBJECT_TYPE_PULL_REQUEST = 2;
+  SUBJECT_TYPE_RELEASE = 3;
+  SUBJECT_TYPE_CI_RUN = 4;
+}
+
+message Notification {
+  string id = 1;
+  string repo_full_name = 2;
+  SubjectType subject_type = 3;
+  string subject_title = 4;
+  // Number for issues and pulls, run number for CI, tag for releases.
+  string subject_ref = 5;
+  NotificationReason reason = 6;
+  bool unread = 7;
+  string url = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+// One entry per action that shows up in a user, org, or repo feed.
+message ActivityEntry {
+  string id = 1;
+  User actor = 2;
+  // "push", "create_repo", "fork", "star", "open_issue", "merge_pull", ...
+  string action = 3;
+  string repo_full_name = 4;
+  string summary = 5;
+  string url = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message ListNotificationsRequest {
+  bool unread_only = 1;
+  optional string repo_full_name = 2;
+  PageRequest page = 3;
+}
+message ListNotificationsResponse {
+  repeated Notification notifications = 1;
+  PageResponse page = 2;
+  int32 unread_count = 3;
+}
+
+message MarkNotificationsRequest {
+  // Empty with `all` set marks everything read.
+  repeated string ids = 1;
+  bool all = 2;
+  bool unread = 3;
+}
+message MarkNotificationsResponse { int32 unread_count = 1; }
+
+message ListActivityRequest {
+  // Exactly one of these scopes the feed; all empty means the viewer's own
+  // dashboard feed, covering everything they watch.
+  optional string user_login = 1;
+  optional string org_login = 2;
+  optional string repo_full_name = 3;
+  PageRequest page = 4;
+}
+message ListActivityResponse {
+  repeated ActivityEntry entries = 1;
+  PageResponse page = 2;
+}
+
+service NotificationService {
+  rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse);
+  rpc MarkNotifications(MarkNotificationsRequest) returns (MarkNotificationsResponse);
+  rpc ListActivity(ListActivityRequest) returns (ListActivityResponse);
+}

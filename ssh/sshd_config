@@ -1,0 +1,48 @@
+# sshd for git access only.
+#
+# Every option below narrows what a successful login can do. The container is
+# reachable only through the Worker's forwarded socket, but a key that leaks is
+# still a key, so the session is confined to git-upload-pack / git-receive-pack.
+
+Port 22
+AddressFamily inet
+ListenAddress 0.0.0.0
+
+HostKey /etc/ssh/ssh_host_ed25519_key
+
+# Public keys are the only accepted credential. There are no passwords to guess
+# and no accounts to guess them against.
+PubkeyAuthentication yes
+PasswordAuthentication no
+PermitEmptyPasswords no
+KbdInteractiveAuthentication no
+ChallengeResponseAuthentication no
+GSSAPIAuthentication no
+PermitRootLogin no
+UsePAM no
+
+# Keys are resolved live from Gitflare's database rather than a file on disk, so
+# revoking a key in the UI takes effect on the next connection.
+AuthorizedKeysCommand /usr/local/bin/gitflare-authorized-keys %u %t %k
+AuthorizedKeysCommandUser nobody
+AuthorizedKeysFile none
+
+# Nothing but git. No port forwarding to reach other services, no agent
+# forwarding to steal credentials, no PTY to get an interactive shell.
+AllowUsers git
+ForceCommand /usr/local/bin/gitflare-git-shell
+AllowTcpForwarding no
+AllowAgentForwarding no
+AllowStreamLocalForwarding no
+PermitTunnel no
+X11Forwarding no
+PermitTTY no
+PermitUserRC no
+
+ClientAliveInterval 30
+ClientAliveCountMax 4
+LoginGraceTime 20
+MaxAuthTries 3
+MaxSessions 10
+
+LogLevel INFO

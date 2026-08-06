@@ -1,0 +1,96 @@
+syntax = "proto3";
+
+package forge.v1;
+
+import "google/protobuf/timestamp.proto";
+
+message User {
+  string id = 1;
+  string login = 2;
+  string email = 3;
+  string display_name = 4;
+  string avatar_url = 5;
+  bool is_admin = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message SshKey {
+  string id = 1;
+  string title = 2;
+  // OpenSSH authorized_keys format, e.g. "ssh-ed25519 AAAA... comment".
+  string public_key = 3;
+  string fingerprint = 4;
+  bool read_only = 5;
+  google.protobuf.Timestamp created_at = 6;
+  optional google.protobuf.Timestamp last_used_at = 7;
+}
+
+message AccessToken {
+  string id = 1;
+  string name = 2;
+  repeated string scopes = 3;
+  google.protobuf.Timestamp created_at = 4;
+  optional google.protobuf.Timestamp expires_at = 5;
+  optional google.protobuf.Timestamp last_used_at = 6;
+}
+
+message GetCurrentUserRequest {}
+message GetCurrentUserResponse {
+  User user = 1;
+  // False when the request authenticated with a PAT rather than a browser
+  // session; the UI hides session-only affordances in that case.
+  bool is_session = 2;
+}
+
+message GetUserRequest { string login = 1; }
+message GetUserResponse { User user = 1; }
+
+message UpdateCurrentUserRequest {
+  optional string display_name = 1;
+  optional string avatar_url = 2;
+}
+message UpdateCurrentUserResponse { User user = 1; }
+
+message ListSshKeysRequest {}
+message ListSshKeysResponse { repeated SshKey keys = 1; }
+
+message CreateSshKeyRequest {
+  string title = 1;
+  string public_key = 2;
+  bool read_only = 3;
+}
+message CreateSshKeyResponse { SshKey key = 1; }
+
+message DeleteSshKeyRequest { string id = 1; }
+message DeleteSshKeyResponse {}
+
+message ListAccessTokensRequest {}
+message ListAccessTokensResponse { repeated AccessToken tokens = 1; }
+
+message CreateAccessTokenRequest {
+  string name = 1;
+  repeated string scopes = 2;
+  optional int64 ttl_seconds = 3;
+}
+message CreateAccessTokenResponse {
+  AccessToken token = 1;
+  // Returned exactly once, at creation. Only a hash is persisted.
+  string plaintext = 2;
+}
+
+message DeleteAccessTokenRequest { string id = 1; }
+message DeleteAccessTokenResponse {}
+
+service UserService {
+  rpc GetCurrentUser(GetCurrentUserRequest) returns (GetCurrentUserResponse);
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  rpc UpdateCurrentUser(UpdateCurrentUserRequest) returns (UpdateCurrentUserResponse);
+
+  rpc ListSshKeys(ListSshKeysRequest) returns (ListSshKeysResponse);
+  rpc CreateSshKey(CreateSshKeyRequest) returns (CreateSshKeyResponse);
+  rpc DeleteSshKey(DeleteSshKeyRequest) returns (DeleteSshKeyResponse);
+
+  rpc ListAccessTokens(ListAccessTokensRequest) returns (ListAccessTokensResponse);
+  rpc CreateAccessToken(CreateAccessTokenRequest) returns (CreateAccessTokenResponse);
+  rpc DeleteAccessToken(DeleteAccessTokenRequest) returns (DeleteAccessTokenResponse);
+}

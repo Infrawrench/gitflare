@@ -1,0 +1,40 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "gitflare-ssh",
+  "main": "ssh/index.ts",
+  "compatibility_date": "2026-08-06",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  // GATED. This Worker exports a `connect(socket)` handler, which requires:
+  //   1. the inbound-TCP private beta (https://blog.cloudflare.com/grpc-workers/), and
+  //   2. a Spectrum application on port 22 of a zone you own, routed to this Worker.
+  // Neither is available on workers.dev. `vite.config.ts` only includes this
+  // auxiliary Worker when GITFLARE_SSH_ENABLED=1. See ssh/README.md.
+
+  "vars": {
+    "ARTIFACTS_NAMESPACE": "gitflare",
+    // Reachable from inside the container; used for the authorized-keys callback.
+    "GITFLARE_URL": "https://gitflare.example.com"
+  },
+
+  // Secrets: SSH_HOST_KEY (Ed25519 private key, PEM), INTERNAL_TOKEN (shared with
+  // the main Worker so the container can authenticate its key lookups).
+
+  "containers": [
+    {
+      "class_name": "SshServer",
+      "image": "./ssh/Dockerfile",
+      "instance_type": "standard-1",
+      "max_instances": 5
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [{ "name": "SSH_SERVER", "class_name": "SshServer" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SshServer"] }],
+
+  // Public-key lookups and repo authorization resolve against the main Worker's D1.
+  "services": [{ "binding": "GITFLARE", "service": "gitflare" }]
+}

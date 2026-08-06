@@ -1,0 +1,189 @@
+syntax = "proto3";
+
+package forge.v1;
+
+import "forge/v1/common.proto";
+import "forge/v1/user.proto";
+import "google/protobuf/timestamp.proto";
+
+message Repo {
+  string id = 1;
+  Owner owner = 2;
+  string name = 3;
+  string description = 4;
+  Visibility visibility = 5;
+  string default_branch = 6;
+
+  // The flat Artifacts repo name backing this repo ("owner--name"). Exposed so
+  // operators can correlate a forge repo with `wrangler artifacts repos get`.
+  string artifacts_name = 7;
+  // Git remote for direct Artifacts access. Only populated for callers with
+  // admin permission; ordinary clients clone through the forge's HTTPS proxy.
+  string artifacts_remote = 8;
+  // The URL to hand to `git clone`.
+  string clone_url = 9;
+  string ssh_url = 10;
+
+  bool is_fork = 11;
+  optional string parent_full_name = 12;
+  bool is_mirror = 13;
+  bool archived = 14;
+  bool has_wiki = 15;
+  bool has_issues = 16;
+  bool ci_enabled = 17;
+
+  int32 star_count = 18;
+  int32 fork_count = 19;
+  int32 open_issue_count = 20;
+  int32 open_pull_count = 21;
+
+  // The caller's effective permission, already resolved across direct grants
+  // and team membership.
+  Permission viewer_permission = 22;
+  bool viewer_starred = 23;
+  bool viewer_watching = 24;
+
+  google.protobuf.Timestamp created_at = 25;
+  google.protobuf.Timestamp updated_at = 26;
+  optional google.protobuf.Timestamp pushed_at = 27;
+
+  // Set while Artifacts reports "importing" or "forking"; git operations fail
+  // until the repo reaches "ready".
+  string status = 28;
+}
+
+message Collaborator {
+  User user = 1;
+  Permission permission = 2;
+  // True when the grant comes from a team rather than a direct assignment.
+  bool via_team = 3;
+  optional string team_name = 4;
+}
+
+message CreateRepoRequest {
+  // Defaults to the calling user when empty.
+  string owner = 1;
+  string name = 2;
+  string description = 3;
+  Visibility visibility = 4;
+  string default_branch = 5;
+  bool auto_init = 6;
+  bool has_wiki = 7;
+  bool has_issues = 8;
+}
+message CreateRepoResponse { Repo repo = 1; }
+
+message ImportRepoRequest {
+  string owner = 1;
+  string name = 2;
+  // Any git remote Artifacts can reach.
+  string clone_url = 3;
+  optional string branch = 4;
+  optional int32 depth = 5;
+  string description = 6;
+  Visibility visibility = 7;
+  // Keep re-syncing from the source rather than importing once.
+  bool mirror = 8;
+}
+message ImportRepoResponse { Repo repo = 1; }
+
+message ForkRepoRequest {
+  string owner = 1;
+  string name = 2;
+  // Defaults to the calling user.
+  string target_owner = 3;
+  optional string target_name = 4;
+  bool default_branch_only = 5;
+}
+message ForkRepoResponse { Repo repo = 1; }
+
+message GetRepoRequest {
+  string owner = 1;
+  string name = 2;
+}
+message GetRepoResponse { Repo repo = 1; }
+
+enum RepoSort {
+  REPO_SORT_UNSPECIFIED = 0;
+  REPO_SORT_UPDATED = 1;
+  REPO_SORT_CREATED = 2;
+  REPO_SORT_NAME = 3;
+  REPO_SORT_STARS = 4;
+}
+
+message ListReposRequest {
+  optional string owner = 1;
+  optional string query = 2;
+  RepoSort sort = 3;
+  bool starred_by_viewer = 4;
+  PageRequest page = 5;
+}
+message ListReposResponse {
+  repeated Repo repos = 1;
+  PageResponse page = 2;
+}
+
+message UpdateRepoRequest {
+  string owner = 1;
+  string name = 2;
+  optional string description = 3;
+  optional Visibility visibility = 4;
+  optional string default_branch = 5;
+  optional bool archived = 6;
+  optional bool has_wiki = 7;
+  optional bool has_issues = 8;
+  optional bool ci_enabled = 9;
+  optional string new_name = 10;
+}
+message UpdateRepoResponse { Repo repo = 1; }
+
+message DeleteRepoRequest {
+  string owner = 1;
+  string name = 2;
+}
+message DeleteRepoResponse {}
+
+message SetStarRequest {
+  string owner = 1;
+  string name = 2;
+  bool starred = 3;
+}
+message SetStarResponse { int32 star_count = 1; }
+
+message SetWatchRequest {
+  string owner = 1;
+  string name = 2;
+  bool watching = 3;
+}
+message SetWatchResponse {}
+
+message ListCollaboratorsRequest {
+  string owner = 1;
+  string name = 2;
+}
+message ListCollaboratorsResponse { repeated Collaborator collaborators = 1; }
+
+message SetCollaboratorRequest {
+  string owner = 1;
+  string name = 2;
+  string user_login = 3;
+  // PERMISSION_NONE removes the collaborator.
+  Permission permission = 4;
+}
+message SetCollaboratorResponse {}
+
+service RepoService {
+  rpc CreateRepo(CreateRepoRequest) returns (CreateRepoResponse);
+  rpc ImportRepo(ImportRepoRequest) returns (ImportRepoResponse);
+  rpc ForkRepo(ForkRepoRequest) returns (ForkRepoResponse);
+  rpc GetRepo(GetRepoRequest) returns (GetRepoResponse);
+  rpc ListRepos(ListReposRequest) returns (ListReposResponse);
+  rpc UpdateRepo(UpdateRepoRequest) returns (UpdateRepoResponse);
+  rpc DeleteRepo(DeleteRepoRequest) returns (DeleteRepoResponse);
+
+  rpc SetStar(SetStarRequest) returns (SetStarResponse);
+  rpc SetWatch(SetWatchRequest) returns (SetWatchResponse);
+
+  rpc ListCollaborators(ListCollaboratorsRequest) returns (ListCollaboratorsResponse);
+  rpc SetCollaborator(SetCollaboratorRequest) returns (SetCollaboratorResponse);
+}

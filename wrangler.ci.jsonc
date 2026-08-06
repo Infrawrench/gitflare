@@ -1,0 +1,77 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "gitflare-ci",
+  "main": "ci/index.ts",
+  "compatibility_date": "2026-08-06",
+  // @cloudflare/ci requires nodejs_compat for its `@cloudflare/ci/worker` entrypoint.
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  "vars": {
+    "ARTIFACTS_NAMESPACE": "gitflare",
+    // @cloudflare/ci reads this to address the R2 bucket over the S3 API when it
+    // stores sandbox snapshots. Must match the bucket_name below.
+    "BACKUP_BUCKET_NAME": "gitflare-ci-cache"
+  },
+
+  // Secrets (`wrangler secret put --config wrangler.ci.jsonc`):
+  //   CLOUDFLARE_ACCOUNT_ID  - account that owns the Artifacts namespace
+  //   CF_TOKEN               - API token the sandbox uses for `wrangler deploy` steps
+  //   R2_ACCESS_KEY_ID       - R2 S3 API token; created in the dashboard, not by wrangler
+  //   R2_SECRET_ACCESS_KEY   - secret half of the same S3 API token
+
+  "artifacts": [{ "binding": "ARTIFACTS", "namespace": "gitflare" }],
+
+  // Snapshot cache for `ci.runner({ cache: { inputs: [...] } })`.
+  "r2_buckets": [{ "binding": "BACKUP_BUCKET", "bucket_name": "gitflare-ci-cache" }],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "gitflare",
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ],
+
+  "workflows": [
+    {
+      "binding": "CI_WORKFLOW",
+      "name": "gitflare-ci-workflow",
+      "class_name": "GitflareCI"
+    }
+  ],
+
+  "containers": [
+    {
+      "class_name": "CiSandbox",
+      "image": "./ci/Dockerfile",
+      "instance_type": "standard-1",
+      "max_instances": 20
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [
+      { "name": "SANDBOX", "class_name": "CiSandbox" },
+      // Live log fan-out lives in the main Worker so the UI can subscribe to it
+      // without a second hop.
+      { "name": "CI_LOGS", "class_name": "CiLogStream", "script_name": "gitflare" }
+    ]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["CiSandbox"] }],
+
+  // Every push to any repo in the namespace starts a CI Workflow instance.
+  // Drop `repoName` from the filter to match all repos; keep the namespace so a
+  // second namespace on the same account cannot trigger these pipelines.
+  "triggers": {
+    "events": [
+      {
+        "type": "cf.artifacts.repo.pushed",
+        "filter": { "namespace": "gitflare" },
+        // `targets` (plural array), not the singular `target` shown in the
+        // announcement post — wrangler 4.119 rejects the latter.
+        "targets": [{ "type": "workflow", "workflow_name": "gitflare-ci-workflow" }]
+      }
+    ]
+  }
+}

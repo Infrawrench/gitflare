@@ -1,0 +1,57 @@
+{
+  "name": "gitflare",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.26.0",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "generate": "buf generate",
+    "typecheck": "node scripts/typecheck.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "cf-typegen": "wrangler types",
+    "db:migrate:local": "wrangler d1 migrations apply gitflare --local",
+    "db:migrate:remote": "wrangler d1 migrations apply gitflare --remote",
+    "deploy": "vite build && wrangler deploy"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "2.13.0",
+    "@cloudflare/ci": "0.1.0",
+    "@cloudflare/sandbox": "0.12.1",
+    "@connectrpc/connect": "2.1.2",
+    "@connectrpc/connect-web": "2.1.2",
+    "@tanstack/react-query": "5.101.4",
+    "@tanstack/react-router": "1.170.21",
+    "@tanstack/react-start": "1.168.38",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@bufbuild/buf": "1.72.0",
+    "@bufbuild/protoc-gen-es": "2.13.0",
+    "@cloudflare/vite-plugin": "1.51.0",
+    "@cloudflare/vitest-pool-workers": "0.20.2",
+    "@cloudflare/workers-types": "5.20260804.1",
+    "@types/node": "^24.13.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "6.0.5",
+    "typescript": "7.0.2",
+    "vite": "8.2.1",
+    "vitest": "4.1.10",
+    "wrangler": "4.119.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@cloudflare/sandbox": "0.12.1"
+    },
+    "onlyBuiltDependencies": [
+      "@bufbuild/buf",
+      "esbuild",
+      "workerd"
+    ]
+  }
+}

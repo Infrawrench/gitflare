@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package forge.v1;
+
+import "forge/v1/common.proto";
+import "forge/v1/user.proto";
+import "google/protobuf/timestamp.proto";
+
+// Wiki pages live in a sibling Artifacts repo named "{owner}--{repo}--wiki", so
+// the whole history is a real git repo that can be cloned like any other.
+message WikiPage {
+  // URL-safe slug; the file on disk is "{slug}.md".
+  string slug = 1;
+  string title = 2;
+  string content = 3;
+  string content_html = 4;
+  string commit_sha = 5;
+  optional User last_editor = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+message ListWikiPagesRequest {
+  string owner = 1;
+  string repo = 2;
+}
+message ListWikiPagesResponse {
+  repeated WikiPage pages = 1;
+  // False until the first page is written; the wiki repo is created lazily.
+  bool initialized = 2;
+}
+
+message GetWikiPageRequest {
+  string owner = 1;
+  string repo = 2;
+  string slug = 3;
+  // Historical revision; empty reads the default branch.
+  string ref = 4;
+}
+message GetWikiPageResponse { WikiPage page = 1; }
+
+message SaveWikiPageRequest {
+  string owner = 1;
+  string repo = 2;
+  string slug = 3;
+  string title = 4;
+  string content = 5;
+  string commit_message = 6;
+  // Rejects the write if the page moved since it was read.
+  optional string expected_commit_sha = 7;
+}
+message SaveWikiPageResponse { WikiPage page = 1; }
+
+message DeleteWikiPageRequest {
+  string owner = 1;
+  string repo = 2;
+  string slug = 3;
+  string commit_message = 4;
+}
+message DeleteWikiPageResponse {}
+
+message ListWikiRevisionsRequest {
+  string owner = 1;
+  string repo = 2;
+  string slug = 3;
+  int32 limit = 4;
+}
+message ListWikiRevisionsResponse { repeated Commit commits = 1; }
+
+service WikiService {
+  rpc ListWikiPages(ListWikiPagesRequest) returns (ListWikiPagesResponse);
+  rpc GetWikiPage(GetWikiPageRequest) returns (GetWikiPageResponse);
+  rpc SaveWikiPage(SaveWikiPageRequest) returns (SaveWikiPageResponse);
+  rpc DeleteWikiPage(DeleteWikiPageRequest) returns (DeleteWikiPageResponse);
+  rpc ListWikiRevisions(ListWikiRevisionsRequest) returns (ListWikiRevisionsResponse);
+}

@@ -1,0 +1,105 @@
+syntax = "proto3";
+
+package forge.v1;
+
+import "forge/v1/common.proto";
+import "forge/v1/user.proto";
+import "google/protobuf/timestamp.proto";
+
+message ReleaseAsset {
+  string id = 1;
+  string name = 2;
+  int64 size = 3;
+  string content_type = 4;
+  int32 download_count = 5;
+  string download_url = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message Release {
+  string id = 1;
+  string tag_name = 2;
+  // Branch or SHA the tag points at.
+  string target = 3;
+  string name = 4;
+  string body = 5;
+  string body_html = 6;
+  bool draft = 7;
+  bool prerelease = 8;
+  User author = 9;
+  repeated ReleaseAsset assets = 10;
+  // Source archives are generated on demand from the tag's tree.
+  string tarball_url = 11;
+  string zipball_url = 12;
+  google.protobuf.Timestamp created_at = 13;
+  optional google.protobuf.Timestamp published_at = 14;
+}
+
+message ListReleasesRequest {
+  string owner = 1;
+  string repo = 2;
+  bool include_drafts = 3;
+  PageRequest page = 4;
+}
+message ListReleasesResponse {
+  repeated Release releases = 1;
+  PageResponse page = 2;
+}
+
+message GetReleaseRequest {
+  string owner = 1;
+  string repo = 2;
+  string tag_name = 3;
+}
+message GetReleaseResponse { Release release = 1; }
+
+message CreateReleaseRequest {
+  string owner = 1;
+  string repo = 2;
+  string tag_name = 3;
+  string target = 4;
+  string name = 5;
+  string body = 6;
+  bool draft = 7;
+  bool prerelease = 8;
+}
+message CreateReleaseResponse { Release release = 1; }
+
+message UpdateReleaseRequest {
+  string release_id = 1;
+  optional string name = 2;
+  optional string body = 3;
+  optional bool draft = 4;
+  optional bool prerelease = 5;
+}
+message UpdateReleaseResponse { Release release = 1; }
+
+message DeleteReleaseRequest { string release_id = 1; }
+message DeleteReleaseResponse {}
+
+// Assets upload over plain HTTP PUT rather than gRPC — gRPC-web cannot stream
+// request bodies from a browser, so large files would have to be buffered.
+message CreateAssetUploadRequest {
+  string release_id = 1;
+  string name = 2;
+  string content_type = 3;
+  int64 size = 4;
+}
+message CreateAssetUploadResponse {
+  string asset_id = 1;
+  // PUT the bytes here. Single-use and short-lived.
+  string upload_url = 2;
+}
+
+message DeleteAssetRequest { string asset_id = 1; }
+message DeleteAssetResponse {}
+
+service ReleaseService {
+  rpc ListReleases(ListReleasesRequest) returns (ListReleasesResponse);
+  rpc GetRelease(GetReleaseRequest) returns (GetReleaseResponse);
+  rpc CreateRelease(CreateReleaseRequest) returns (CreateReleaseResponse);
+  rpc UpdateRelease(UpdateReleaseRequest) returns (UpdateReleaseResponse);
+  rpc DeleteRelease(DeleteReleaseRequest) returns (DeleteReleaseResponse);
+  rpc CreateAssetUpload(CreateAssetUploadRequest) returns (CreateAssetUploadResponse);
+  rpc DeleteAsset(DeleteAssetRequest) returns (DeleteAssetResponse);
+}

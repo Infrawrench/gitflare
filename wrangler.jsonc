@@ -1,0 +1,61 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "gitflare",
+  "main": "src/server.ts",
+  "compatibility_date": "2026-08-06",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  "vars": {
+    // The Artifacts namespace every repo lives in. Artifacts repo names are flat
+    // within a namespace, so `owner/repo` is stored as `owner--repo`.
+    "ARTIFACTS_NAMESPACE": "gitflare",
+    // Cloudflare Access team domain, e.g. "acme.cloudflareaccess.com". Leave empty
+    // to fall back to local dev sessions (see src/server/auth/access.ts).
+    "ACCESS_TEAM_DOMAIN": "",
+    // Access application AUD tag. Required whenever ACCESS_TEAM_DOMAIN is set.
+    "ACCESS_AUD": "",
+    "GITFLARE_URL": "http://localhost:5173"
+  },
+
+  // Secrets (set with `wrangler secret put`):
+  //   CLOUDFLARE_ACCOUNT_ID  - account that owns the Artifacts namespace
+  //   CF_API_TOKEN           - Artifacts:Read token for the REST content endpoints
+
+  "artifacts": [{ "binding": "ARTIFACTS", "namespace": "gitflare" }],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "gitflare",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "kv_namespaces": [
+    // Caches the Cloudflare Access JWKS and other short-lived lookups.
+    { "binding": "CACHE", "id": "0000000000000000000000000000000f" }
+  ],
+
+  "r2_buckets": [{ "binding": "ASSETS_BUCKET", "bucket_name": "gitflare-assets" }],
+
+  "queues": {
+    "producers": [{ "binding": "WEBHOOKS", "queue": "gitflare-webhooks" }],
+    "consumers": [
+      {
+        "queue": "gitflare-webhooks",
+        "max_batch_size": 10,
+        "max_retries": 5,
+        "dead_letter_queue": "gitflare-webhooks-dlq"
+      }
+    ]
+  },
+
+  "durable_objects": {
+    "bindings": [{ "name": "CI_LOGS", "class_name": "CiLogStream" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["CiLogStream"] }],
+
+  "services": [{ "binding": "CI", "service": "gitflare-ci" }]
+}
