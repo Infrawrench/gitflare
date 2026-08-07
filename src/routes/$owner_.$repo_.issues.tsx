@@ -19,14 +19,14 @@ export const Route = createFileRoute('/$owner_/$repo_/issues')({
     ...(search.state === 'closed' ? { state: 'closed' as const } : {}),
     ...(typeof search.q === 'string' && search.q ? { q: search.q } : {}),
   }),
+  loader: ({ context, params }) =>
+    context.queryClient.ensureQueryData(issueList(params.owner, params.repo, 'open')),
   component: IssuesPage,
 })
 
-function IssuesPage() {
-  const { owner, repo } = Route.useParams()
-  const { state = 'open', q } = Route.useSearch()
-
-  const issues = useQuery({
+/** Shared so the loader and the component cannot drift on the key or the args. */
+function issueList(owner: string, repo: string, state: 'open' | 'closed', q?: string) {
+  return {
     queryKey: ['issues', owner, repo, state, q],
     queryFn: () =>
       api.issue.listIssues({
@@ -36,7 +36,14 @@ function IssuesPage() {
         ...(q ? { query: q } : {}),
         page: { limit: 50 },
       }),
-  })
+  }
+}
+
+function IssuesPage() {
+  const { owner, repo } = Route.useParams()
+  const { state = 'open', q } = Route.useSearch()
+
+  const issues = useQuery(issueList(owner, repo, state, q))
 
   return (
     <>

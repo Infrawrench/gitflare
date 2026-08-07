@@ -5,15 +5,20 @@ import { RepoSort } from '~/gen/forge/v1/repo_pb'
 import { GateNotice } from '~/components/GateNotice'
 import { RepoCard } from '~/components/RepoCard'
 
+const recentRepos = {
+  queryKey: ['repos', 'recent'],
+  queryFn: () => api.repo.listRepos({ sort: RepoSort.UPDATED, page: { limit: 30 } }),
+}
+
 export const Route = createFileRoute('/')({
+  // Warms the cache during SSR so the first paint has content. The component
+  // below runs the same query and finds it already resolved.
+  loader: ({ context }) => context.queryClient.ensureQueryData(recentRepos),
   component: Home,
 })
 
 function Home() {
-  const repos = useQuery({
-    queryKey: ['repos', 'recent'],
-    queryFn: () => api.repo.listRepos({ sort: RepoSort.UPDATED, page: { limit: 30 } }),
-  })
+  const repos = useQuery(recentRepos)
 
   return (
     <>

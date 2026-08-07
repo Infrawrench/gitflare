@@ -5,17 +5,20 @@ import { RepoSort } from '~/gen/forge/v1/repo_pb'
 import { GateNotice } from '~/components/GateNotice'
 import { RepoCard } from '~/components/RepoCard'
 
+const ownerRepos = (owner: string) => ({
+  queryKey: ['repos', 'owner', owner],
+  queryFn: () => api.repo.listRepos({ owner, sort: RepoSort.UPDATED, page: { limit: 50 } }),
+})
+
 export const Route = createFileRoute('/$owner')({
+  loader: ({ context, params }) => context.queryClient.ensureQueryData(ownerRepos(params.owner)),
   component: OwnerPage,
 })
 
 function OwnerPage() {
   const { owner } = Route.useParams()
 
-  const repos = useQuery({
-    queryKey: ['repos', 'owner', owner],
-    queryFn: () => api.repo.listRepos({ owner, sort: RepoSort.UPDATED, page: { limit: 50 } }),
-  })
+  const repos = useQuery(ownerRepos(owner))
 
   return (
     <>

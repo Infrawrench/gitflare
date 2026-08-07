@@ -265,6 +265,11 @@ Containers, and Queues are all verified working.
 - **Search, inbox, settings, wiki, releases, and org pages** — full-text search;
   an inbox with unread filtering; token and SSH key management; a wiki with an
   editor that writes real commits; releases with assets; org members and teams.
+- **SSR data prefetch** — route loaders warm the query cache during render, so
+  the first paint carries content rather than a loading shell. Getting there
+  needed two fixes: an absolute API origin (a relative `/api` is meaningless on
+  the server) and `redirect: 'manual'`, because connect-web asks for
+  `redirect: 'error'` and workerd implements only `follow` and `manual`.
 - **SSH authorization endpoints** — the container's half of the contract.
   Authorization stays in the Worker, so a key gets exactly the access its owner
   has. An unset `INTERNAL_TOKEN` means *off*, never *unauthenticated*.
@@ -304,11 +309,10 @@ POST /api/…/IssueService/ListIssues          labels, assignees, and counts joi
 
 ### Not built
 
-Nothing here is stubbed or faked — it is either absent, or blocked by a platform
-constraint that is named rather than worked around:
+Everything in the original plan is implemented. What remains is not code but
+access: three of the Cloudflare features this is built on are in closed beta, so
+nothing git-backed has run end to end. See [Blockers](#blockers).
 
-- **SSR data prefetch** — pages render a shell and fetch over gRPC-web on
-  hydration. There are no route loaders, so the first paint has no content.
 
 ## Local development
 

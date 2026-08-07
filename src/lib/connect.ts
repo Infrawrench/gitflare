@@ -22,10 +22,37 @@ import { UserService } from '~/gen/forge/v1/user_pb'
  * Connect's own protocol here would work too, but it would leave native gRPC
  * clients on a different path through the router.
  */
+/**
+ * Absolute origin to call during SSR.
+ *
+ * A relative `/api` is meaningless on the server — there is no document to
+ * resolve it against — so the Worker records the request's origin here before
+ * rendering. `import.meta.env.SSR` is replaced at build time, so the client
+ * bundle keeps the relative URL and never sees this.
+ */
+declare global {
+  // eslint-disable-next-line no-var
+  var __GITFLARE_ORIGIN__: string | undefined
+}
+
+function baseUrl(): string {
+  if (import.meta.env.SSR) return `${globalThis.__GITFLARE_ORIGIN__ ?? 'http://localhost'}/api`
+  return '/api'
+}
+
 const transport = createGrpcWebTransport({
-  baseUrl: '/api',
-  // Cookies carry the session, and Access's own cookie rides along with them.
-  fetch: (input, init) => fetch(input, { ...init, credentials: 'same-origin' }),
+  baseUrl: baseUrl(),
+  fetch: (input, init) =>
+    fetch(input, {
+      ...init,
+      // Cookies carry the session, and Access's own cookie rides along.
+      credentials: 'same-origin',
+      // connect-web asks for `redirect: 'error'`, which workerd refuses — it
+      // implements only 'follow' and 'manual'. 'manual' keeps the intent: a
+      // redirect is returned rather than followed, and Connect then rejects it
+      // for the wrong content type. Without this, every SSR loader fails.
+      redirect: 'manual',
+    }),
 })
 
 function client<T extends DescService>(service: T): Client<T> {

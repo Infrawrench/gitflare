@@ -18,6 +18,11 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const handled = await handleApiRequest(request, env, ctx)
     if (handled) return handled
+
+    // Route loaders call the Connect API during SSR, and a relative URL has no
+    // meaning there. Recording the origin lets the same client code run on both
+    // sides. Set per request because a Worker serves many hostnames.
+    globalThis.__GITFLARE_ORIGIN__ = new URL(request.url).origin
     return renderStart(request)
   },
 
