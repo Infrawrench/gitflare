@@ -413,3 +413,22 @@ a.issue-title:hover { color: var(--accent); }
 .settings-section { margin: 32px 0; }
 .settings-section h2 { font-size: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
 .token-reveal { user-select: all; word-break: break-all; font-size: 13px; }
+
+/* Wiki, releases, and org pages. */
+
+.section-heading { font-size: 16px; margin: 32px 0 8px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+.wiki-index { display: flex; flex-wrap: wrap; gap: 4px; margin: 16px 0; }
+/* Wiki and release bodies are plain text from the API; pre-wrap keeps the
+   author's line breaks without interpreting anything as markup. */
+.wiki-body, .release-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 14px;
+  margin: 16px 0;
+}
+.release { border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin: 16px 0; }
+.release-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.release-head h3 { margin: 0; font-size: 16px; }
+.asset-list { list-style: none; padding: 0; margin: 12px 0 0; }
+.asset-list li { display: flex; justify-content: space-between; padding: 6px 0; border-top: 1px solid var(--border); font-size: 13px; }

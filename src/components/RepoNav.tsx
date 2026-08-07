@@ -9,7 +9,7 @@ export function RepoNav({
 }: {
   owner: string
   repo: string
-  active: 'code' | 'issues' | 'pulls' | 'ci'
+  active: 'code' | 'issues' | 'pulls' | 'ci' | 'wiki' | 'releases'
 }) {
   return (
     <>
@@ -54,6 +54,21 @@ export function RepoNav({
           className={active === 'ci' ? 'tab tab-active' : 'tab'}
         >
           CI
+        </Link>
+        <Link
+          to="/$owner/$repo/releases"
+          params={{ owner, repo }}
+          className={active === 'releases' ? 'tab tab-active' : 'tab'}
+        >
+          Releases
+        </Link>
+        <Link
+          to="/$owner/$repo/wiki"
+          params={{ owner, repo }}
+          search={{}}
+          className={active === 'wiki' ? 'tab tab-active' : 'tab'}
+        >
+          Wiki
         </Link>
       </nav>
     </>

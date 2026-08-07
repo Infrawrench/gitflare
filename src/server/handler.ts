@@ -13,6 +13,7 @@ import {
 } from './git/http'
 import { atLeast } from './auth/rbac'
 import { emit, pushPayload } from './events/emit'
+import { handleInternalSsh, matchInternalSshRoute } from './ssh/internal'
 
 /**
  * Non-SSR request handling, in priority order:
@@ -41,6 +42,11 @@ export async function handleApiRequest(
       waitUntil: (promise) => ctx.waitUntil(promise),
     })
   }
+
+  // Called by the SSH container, guarded by a shared secret. Checked before the
+  // Connect router so it cannot be shadowed by a future /api route.
+  const sshRoute = matchInternalSshRoute(url)
+  if (sshRoute) return handleInternalSsh(sshRoute, request, env)
 
   const connectResponse = await handleConnect(request, env, ctx)
   if (connectResponse) return connectResponse

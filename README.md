@@ -262,9 +262,12 @@ Containers, and Queues are all verified working.
 - **Issue, pull request, and CI pages** — list, detail, comment, open/close,
   new-issue form, a diff viewer with per-file collapse and merge affordance, and
   a run list plus a live log tail that consumes the server-streaming RPC.
-- **Search, notification inbox, and settings pages** — full-text search across
-  repos, issues, and users; an inbox with unread filtering and mark-read; token
-  and SSH key management.
+- **Search, inbox, settings, wiki, releases, and org pages** — full-text search;
+  an inbox with unread filtering; token and SSH key management; a wiki with an
+  editor that writes real commits; releases with assets; org members and teams.
+- **SSH authorization endpoints** — the container's half of the contract.
+  Authorization stays in the Worker, so a key gets exactly the access its owner
+  has. An unset `INTERNAL_TOKEN` means *off*, never *unauthenticated*.
 
   Verified by decoding each page's **route match chain**, not by status code.
   TanStack Router nests `a/b.tsx` under `a.tsx`, and a parent without an
@@ -276,7 +279,7 @@ Containers, and Queues are all verified working.
   which is the whole point of implementing Myers rather than a cheaper heuristic:
   the hunks a reviewer sees here match what they see locally.
 
-**208 tests pass (131 unit + 77 integration). `pnpm typecheck` is clean, `pnpm build` emits both Workers.**
+**232 tests pass (146 unit + 86 integration). `pnpm typecheck` is clean, `pnpm build` emits both Workers.**
 
 Verified against a running dev server:
 
@@ -304,11 +307,8 @@ POST /api/…/IssueService/ListIssues          labels, assignees, and counts joi
 Nothing here is stubbed or faked — it is either absent, or blocked by a platform
 constraint that is named rather than worked around:
 
-- **Wiki, release, and org pages** — repos, issues, pull requests, CI, search,
-  the notification inbox, and settings all have pages; these three are API-only.
 - **SSR data prefetch** — pages render a shell and fetch over gRPC-web on
   hydration. There are no route loaders, so the first paint has no content.
-- **`/internal/ssh/*` endpoints** — the container's half of the SSH contract.
 
 ## Local development
 

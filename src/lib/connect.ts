@@ -3,6 +3,7 @@ import { createClient, type Client } from '@connectrpc/connect'
 import type { DescService } from '@bufbuild/protobuf'
 import { CIService } from '~/gen/forge/v1/ci_pb'
 import { NotificationService } from '~/gen/forge/v1/notification_pb'
+import { OrgService } from '~/gen/forge/v1/org_pb'
 import { ReleaseService } from '~/gen/forge/v1/release_pb'
 import { SearchService } from '~/gen/forge/v1/search_pb'
 import { WikiService } from '~/gen/forge/v1/wiki_pb'
@@ -42,6 +43,7 @@ export const api = {
   notification: client(NotificationService),
   release: client(ReleaseService),
   wiki: client(WikiService),
+  org: client(OrgService),
 }
 
 /**
