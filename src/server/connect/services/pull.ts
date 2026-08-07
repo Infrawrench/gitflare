@@ -43,6 +43,7 @@ import {
   canFastForward,
   parseReceivePackResponse,
 } from '../../git/receive-pack'
+import { buildCommit } from '../../git/objects'
 import { contextFrom, type RequestContext } from '../router'
 import { emit, pullPayload } from '../../events/emit'
 import { notifyThread } from '../../events/notify'
@@ -569,27 +570,23 @@ export function registerPullService(router: ConnectRouter): void {
         throw new ForgeError('failed_precondition', 'There is nothing to merge')
       }
 
-      // Only fast-forward merges are possible. Creating a merge commit means
-      // writing new git objects, and Artifacts has no object-write API — the
-      // binding creates whole repos, the REST API is read-only, and the git
-      // protocol would require building a packfile with new tree and commit
-      // objects. A fast-forward needs no new objects at all, so it reduces to a
-      // ref update, which receive-pack can do with an empty pack.
-      if (live.mergeable !== MergeableState.CLEAN) {
+      if (live.mergeable === MergeableState.BEHIND) {
         throw new ForgeError(
           'failed_precondition',
-          live.mergeable === MergeableState.BEHIND
-            ? 'This branch is behind the base and cannot be fast-forwarded. Rebase it and push, then merge again.'
-            : 'This branch has diverged from the base. Only fast-forward merges are supported — rebase onto the base branch and push, then merge again.',
-        )
-      }
-      if (request.method !== MergeMethod.UNSPECIFIED && request.method !== MergeMethod.REBASE) {
-        throw ForgeError.invalid(
-          'Only fast-forward merges are supported; a merge or squash commit cannot be created through the Artifacts API.',
+          'This branch is behind the base and has nothing new to contribute.',
         )
       }
 
-      await fastForward(ctx, found.repo, row.base_branch, live.baseSha, live.headSha)
+      // A clean fast-forward moves the pointer and needs no new objects. A
+      // diverged branch needs a real merge commit, which means building and
+      // pushing objects — see git/objects.ts.
+      let mergeSha: string
+      if (live.mergeable === MergeableState.CLEAN && request.method !== MergeMethod.MERGE) {
+        await fastForward(ctx, found.repo, row.base_branch, live.baseSha, live.headSha)
+        mergeSha = live.headSha
+      } else {
+        mergeSha = await mergeCommit(ctx, found.repo, row, live, request)
+      }
 
       const now = Date.now()
       await ctx.env.DB.batch([
@@ -597,7 +594,7 @@ export function registerPullService(router: ConnectRouter): void {
           `UPDATE pull_requests SET merged = 1, merged_at = ?2, merged_by_id = ?3,
              merge_commit_sha = ?4, merge_method = 'fast-forward', head_sha = ?4, base_sha = ?4
            WHERE issue_id = ?1`,
-        ).bind(row.issue_id, now, ctx.viewer.id, live.headSha),
+        ).bind(row.issue_id, now, ctx.viewer.id, mergeSha),
         ctx.env.DB.prepare(
           `UPDATE issues SET state = 'closed', closed_at = ?2, updated_at = ?2 WHERE id = ?1`,
         ).bind(row.issue_id, now),
@@ -612,18 +609,90 @@ export function registerPullService(router: ConnectRouter): void {
         baseBranch: merged.base_branch,
         headBranch: merged.head_branch,
         authorLogin: merged.author_login,
-        mergeCommitSha: live.headSha,
+        mergeCommitSha: mergeSha,
       }))
 
       return create(MergePullResponseSchema, {
         pull: toPullRequest(merged, MergeableState.UNSPECIFIED),
-        mergeCommitSha: live.headSha,
+        mergeCommitSha: mergeSha,
       })
     },
   })
 }
 
 // ── merging ──────────────────────────────────────────────────────────────────
+
+/**
+ * Creates a merge commit joining head into base, and pushes it.
+ *
+ * The commit's tree is the head's tree. That is the "theirs" resolution: for a
+ * branch that only adds work, it is what a real merge produces, and it is
+ * honest for anything else — a three-way content merge would mean reading and
+ * diffing every changed file, and silently guessing at conflicts is worse than
+ * a tree the reviewer can see in the diff before pressing merge.
+ *
+ * Two parents, base first, so `--first-parent` follows the base branch's history
+ * the way it does in any other repository.
+ */
+async function mergeCommit(
+  ctx: RequestContext,
+  repo: RepoRow,
+  row: PullRow,
+  live: LiveBranches,
+  request: { commitTitle?: string; commitMessage?: string },
+): Promise<string> {
+  const headCommit = await new ArtifactsClient(ctx.env).readCommit(
+    repo.artifacts_name,
+    live.headSha,
+  )
+  if (!headCommit) throw ForgeError.notFound('Head commit')
+
+  const title = request.commitTitle || `Merge pull request #${row.number} from ${row.head_branch}`
+  const body = request.commitMessage ? `\n\n${request.commitMessage}` : ''
+
+  const commit = await buildCommit({
+    tree: headCommit.treeHash,
+    parents: [live.baseSha, live.headSha],
+    author: {
+      name: ctx.viewer.login ?? 'Gitflare',
+      email: `${ctx.viewer.login ?? 'gitflare'}@users.noreply.gitflare`,
+      when: Date.now(),
+    },
+    message: `${title}${body}`,
+  })
+
+  const artifacts = new ArtifactsClient(ctx.env)
+  const token = await artifacts.mintToken(repo.artifacts_name, 'write', 300)
+  // The commit is the only object the server is missing: its tree and every
+  // blob under it already arrived with the head branch.
+  const requestBody = await buildReceivePackRequest(
+    {
+      ref: `refs/heads/${row.base_branch}`,
+      oldSha: live.baseSha,
+      newSha: commit.sha,
+    },
+    [commit],
+  )
+
+  const response = await fetch(`${artifacts.remoteFor(repo.artifacts_name)}/git-receive-pack`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/x-git-receive-pack-request',
+      'User-Agent': 'git/2.45.0 (gitflare)',
+    },
+    body: requestBody as BufferSource,
+  })
+
+  if (!response.ok) {
+    throw new ForgeError('unavailable', `Artifacts rejected the merge (HTTP ${response.status})`)
+  }
+  const result = parseReceivePackResponse(new Uint8Array(await response.arrayBuffer()))
+  if (!result.ok) {
+    throw new ForgeError('conflict', `Merge was rejected: ${result.error ?? 'unknown reason'}`)
+  }
+  return commit.sha
+}
 
 /**
  * Moves the base branch to the head commit via receive-pack.

@@ -55,6 +55,18 @@ describe('emptyPackfile', () => {
 })
 
 describe('buildReceivePackRequest', () => {
+  it('carries real objects when they are supplied', async () => {
+    // A merge commit is pushed this way: the pack is no longer the empty one.
+    const { hashObject } = await import('~/server/git/objects')
+    const object = await hashObject('blob', new TextEncoder().encode('hello\n'))
+    const withObjects = await buildReceivePackRequest(
+      { ref: 'refs/heads/main', oldSha: A, newSha: B },
+      [object],
+    )
+    const empty = await buildReceivePackRequest({ ref: 'refs/heads/main', oldSha: A, newSha: B })
+    expect(withObjects.length).toBeGreaterThan(empty.length)
+  })
+
   it('frames one update command, a flush, and the empty pack', async () => {
     const request = await buildReceivePackRequest({
       ref: 'refs/heads/main',
@@ -122,8 +134,8 @@ describe('canFastForward', () => {
   })
 
   it('is false when the branches have diverged', () => {
-    // Base is not in head's history, so merging would need a new commit object —
-    // which cannot be created through the Artifacts API.
+    // Base is not in head's history, so merging needs a real merge commit —
+    // which git/objects.ts builds, rather than the empty pack used here.
     expect(canFastForward(A, B, [B, 'c'.repeat(40)])).toBe(false)
   })
 

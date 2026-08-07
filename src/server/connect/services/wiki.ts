@@ -15,6 +15,8 @@ import { ArtifactsClient } from '../../artifacts/client'
 import { wikiArtifactsName } from '../../artifacts/names'
 import { requireRepo, type RepoWithAccess } from '../../db/repos'
 import { ForgeError } from '../../errors'
+import { buildCommit, buildTree, hashObject, type TreeEntry } from '../../git/objects'
+import { buildReceivePackRequest, parseReceivePackResponse, ZERO_SHA } from '../../git/receive-pack'
 import { atLeast } from '../../auth/rbac'
 import { contextFrom, type RequestContext } from '../router'
 
@@ -27,10 +29,9 @@ import { contextFrom, type RequestContext } from '../router'
  * literally called "wiki" encodes to `owner--wiki`, which has two segments to
  * this one's three. See artifacts/names.ts.
  *
- * Writes go through the git protocol, which means the same fast-forward-only
- * constraint as merging: Artifacts has no object-write API, so a page save has
- * to construct a commit. That is not implemented, and SaveWikiPage says so
- * rather than pretending to succeed.
+ * Saving a page builds a blob, a tree, and a commit and pushes them with
+ * receive-pack — Artifacts has no object-write API, so the objects are
+ * constructed here (see git/objects.ts, verified against `git index-pack`).
  */
 
 export function registerWikiService(router: ConnectRouter): void {
@@ -130,17 +131,25 @@ export function registerWikiService(router: ConnectRouter): void {
       if (!atLeast(found.access.permission, 'write')) {
         throw ForgeError.permissionDenied('You need write access to edit the wiki')
       }
-      void ctx
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(request.slug)) {
+        // The slug becomes a filename in the tree; a path separator would let a
+        // page write outside the wiki root.
+        throw ForgeError.invalid('Page slug may only contain letters, numbers, dots, hyphens, and underscores')
+      }
 
-      // Writing a page means creating a blob, a tree, and a commit. Artifacts
-      // has no object-write API — the binding creates whole repos and the REST
-      // API is read-only — so this would require building a packfile, the same
-      // obstacle that limits merging to fast-forwards. Reporting it is better
-      // than a silent no-op that looks like a save.
-      throw new ForgeError(
-        'unimplemented',
-        'Editing the wiki from the web is not implemented: Artifacts has no object-write API, so a page save would have to construct and push a git commit. Clone the wiki repository and push instead.',
-      )
+      const sha = await writeWikiTree(ctx, found, {
+        [`${request.slug}.md`]: request.content,
+      }, request.commitMessage || `Update ${request.slug}`, request.expectedCommitSha)
+
+      return create(SaveWikiPageResponseSchema, {
+        page: create(WikiPageSchema, {
+          slug: request.slug,
+          title: request.title || titleFromSlug(request.slug),
+          content: request.content,
+          contentHtml: '',
+          commitSha: sha,
+        }),
+      })
     },
 
     async deleteWikiPage(request, context) {
@@ -148,13 +157,13 @@ export function registerWikiService(router: ConnectRouter): void {
       if (!atLeast(found.access.permission, 'write')) {
         throw ForgeError.permissionDenied('You need write access to edit the wiki')
       }
-      void ctx
-      void request
 
-      throw new ForgeError(
-        'unimplemented',
-        'Deleting a wiki page from the web is not implemented; clone the wiki repository and push instead.',
-      )
+      // A null value removes the entry rather than writing an empty page.
+      await writeWikiTree(ctx, found, {
+        [`${request.slug}.md`]: null,
+      }, request.commitMessage || `Delete ${request.slug}`)
+
+      return create(DeleteWikiPageResponseSchema, {})
     },
   })
 }
@@ -179,4 +188,112 @@ function titleFromSlug(slug: string): string {
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
+}
+
+/**
+ * Applies a set of file changes to the wiki repo as one commit.
+ *
+ * The wiki is flat — one markdown file per page — so the whole tree is rebuilt
+ * from the existing entries plus the changes. That is affordable here and
+ * avoids the recursive tree rewriting a nested layout would need.
+ *
+ * The repo is created on first write, which is why the wiki can be listed as
+ * "not initialized" until someone saves a page.
+ */
+async function writeWikiTree(
+  ctx: RequestContext,
+  found: RepoWithAccess,
+  changes: Record<string, string | null>,
+  message: string,
+  expectedCommitSha?: string,
+): Promise<string> {
+  const artifacts = new ArtifactsClient(ctx.env)
+  const name = wikiArtifactsName(found.repo.owner_login, found.repo.name)
+
+  let repo = await artifacts.tryGetRepo(name)
+  if (!repo) {
+    await artifacts.createRepo(name, {
+      description: `Wiki for ${found.repo.owner_login}/${found.repo.name}`,
+      defaultBranch: 'main',
+    })
+    repo = await artifacts.getRepo(name)
+  }
+
+  const branch = repo.defaultBranch || 'main'
+  const refs = await artifacts.listRefs(name)
+  const head = refs.branches.find((item) => item.name === branch)
+
+  // Refuse the write if the page moved since it was read, the same
+  // compare-and-swap the merge path uses.
+  if (expectedCommitSha && head && head.sha !== expectedCommitSha) {
+    throw new ForgeError(
+      'conflict',
+      'This page changed since you opened it. Reload and reapply your edit.',
+    )
+  }
+
+  const entries = new Map<string, TreeEntry>()
+  if (head) {
+    const level = await artifacts.readTreeAtPath(name, head.sha, '')
+    for (const entry of level?.entries ?? []) {
+      if (entry.type === 'blob') {
+        entries.set(entry.name, { mode: entry.mode, name: entry.name, sha: entry.hash })
+      }
+    }
+  }
+
+  const objects = []
+  for (const [filename, content] of Object.entries(changes)) {
+    if (content === null) {
+      entries.delete(filename)
+      continue
+    }
+    const blob = await hashObject('blob', new TextEncoder().encode(content))
+    objects.push(blob)
+    entries.set(filename, { mode: '100644', name: filename, sha: blob.sha })
+  }
+
+  if (entries.size === 0) throw ForgeError.invalid('A wiki must keep at least one page')
+
+  const tree = await buildTree([...entries.values()])
+  const commit = await buildCommit({
+    tree: tree.sha,
+    parents: head ? [head.sha] : [],
+    author: {
+      name: ctx.viewer.login ?? 'Gitflare',
+      email: `${ctx.viewer.login ?? 'gitflare'}@users.noreply.gitflare`,
+      when: Date.now(),
+    },
+    message,
+  })
+  objects.push(tree, commit)
+
+  const token = await artifacts.mintToken(name, 'write', 300)
+  const body = await buildReceivePackRequest(
+    {
+      ref: `refs/heads/${branch}`,
+      oldSha: head?.sha ?? ZERO_SHA,
+      newSha: commit.sha,
+    },
+    objects,
+  )
+
+  const response = await fetch(`${artifacts.remoteFor(name)}/git-receive-pack`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/x-git-receive-pack-request',
+      'User-Agent': 'git/2.45.0 (gitflare)',
+    },
+    body: body as BufferSource,
+  })
+
+  if (!response.ok) {
+    throw new ForgeError('unavailable', `Artifacts rejected the write (HTTP ${response.status})`)
+  }
+  const result = parseReceivePackResponse(new Uint8Array(await response.arrayBuffer()))
+  if (!result.ok) {
+    throw new ForgeError('conflict', `Wiki write was rejected: ${result.error ?? 'unknown reason'}`)
+  }
+  return commit.sha
 }

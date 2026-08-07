@@ -1,4 +1,6 @@
 import { encodeFlush, encodePktLine } from './pktline'
+import type { GitObject } from './objects'
+import { buildPackfile } from './objects'
 import { decodeLatin1, decodePktLines } from './pktline'
 
 /**
@@ -8,18 +10,17 @@ import { decodeLatin1, decodePktLines } from './pktline'
  * and the REST API is read-only. The only way to move a branch is to speak
  * `git-receive-pack` to the remote, the same as `git push` does.
  *
- * That constrains what merging can do. A push carries two parts: a list of ref
- * update commands, and a packfile of any objects the server is missing. Building
- * a packfile means constructing tree and commit objects, deflating them, and
- * checksumming the result — real work, and easy to get subtly wrong.
+ * A push carries two parts: a list of ref update commands, and a packfile of any
+ * objects the server is missing.
  *
- * A **fast-forward** merge needs none of it. Every object already exists on the
- * server (they arrived when the head branch was pushed), so the packfile is
- * *empty* and the push is just "move refs/heads/main from A to B". That is what
- * this module implements: 32 bytes of empty pack, and one update command.
+ * A **fast-forward** needs no objects at all — everything arrived when the head
+ * branch was pushed — so the pack is the 32-byte empty one and the push is just
+ * "move refs/heads/main from A to B".
  *
- * True merge commits are deliberately not implemented here. See
- * `canFastForward` and the note in PullService.
+ * A **merge commit** does need objects, and `objects.ts` builds them: SHA-1 from
+ * WebCrypto, zlib from `CompressionStream`. Both were verified by feeding a
+ * generated pack to `git index-pack --stdin`, which validates the trailer and
+ * every object encoding before accepting it.
  */
 
 const ZERO_SHA = '0'.repeat(40)
@@ -61,11 +62,19 @@ export interface RefUpdate {
  * since it was read. That compare-and-swap is what stops a merge from silently
  * clobbering a push that landed while the pull request page was open.
  */
-export async function buildReceivePackRequest(update: RefUpdate): Promise<Uint8Array> {
+export async function buildReceivePackRequest(
+  update: RefUpdate,
+  /**
+   * Objects the server does not have yet. Omitted for a fast-forward, where
+   * every object already arrived with the head branch, so the pack is empty.
+   */
+  objects: GitObject[] = [],
+): Promise<Uint8Array> {
   // Capabilities ride on the first command, after a NUL.
   const command = `${update.oldSha} ${update.newSha} ${update.ref}\0report-status\n`
 
-  const parts = [encodePktLine(command), encodeFlush(), await emptyPackfile()]
+  const pack = objects.length > 0 ? await buildPackfile(objects) : await emptyPackfile()
+  const parts = [encodePktLine(command), encodeFlush(), pack]
   const total = parts.reduce((sum, part) => sum + part.length, 0)
   const body = new Uint8Array(total)
 

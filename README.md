@@ -54,6 +54,30 @@ Artifacts repo names are flat within a namespace, so `owner/repo` is stored as
 consecutive hyphens — otherwise `a--b` + `c` and `a` + `b--c` would collide on
 the same git storage. See `src/server/artifacts/names.ts`.
 
+### Writing git objects
+
+Artifacts is read-only at the object level: the binding creates whole repos, the
+REST API reads, and neither can write a blob. Anything that creates a commit
+therefore builds the objects and pushes them in a packfile.
+
+That is possible in a Worker because `crypto.subtle` does SHA-1 and
+`CompressionStream('deflate')` produces the zlib framing git expects. The proof
+is that git accepts the result:
+
+```
+$ node build-pack.mjs > out.pack
+$ git index-pack --stdin < out.pack
+pack 405515fc7fac4a014a4291f07f96fd4cd8b2a73f
+$ git cat-file -p 4f9eb3e3e91f095a703ecf3976d1d89629e005d8
+tree b4ed918248039b78f24383523fa4e51f80994fac
+author Test <t@example.com> 1700000000 +0000
+```
+
+The subtle part is tree sorting: git orders a directory as though its name ended
+in `/`, so `lib/` sorts after `lib.txt`. Sorting lexicographically yields a tree
+that hashes differently from git's for identical content, and every id
+downstream diverges. See `src/server/git/objects.ts`.
+
 ### Git over HTTPS
 
 `git clone https://gitflare.example.com/astrid/api.git` works with an unmodified
@@ -220,9 +244,15 @@ Containers, and Queues are all verified working.
 - **Search** — FTS5 over repos, issues, and users. Tested that a private repo's
   issue *titles* do not leak: the row is never rendered, but it would otherwise
   come back in the response body.
-- **Fast-forward merge** — `receive-pack` with an empty packfile. Our empty pack
-  is **byte-identical to `git pack-objects --stdout`**, which matters because git
-  verifies its SHA-1 trailer.
+- **Writing git objects** — Artifacts has no object-write API, so blobs, trees,
+  and commits are constructed in the Worker: SHA-1 from WebCrypto, zlib from
+  `CompressionStream`. **A generated packfile was fed to `git index-pack --stdin`,
+  which validated it and read every object back correctly** — object ids match
+  `git hash-object` exactly. This is what makes real merge commits and web wiki
+  edits possible; the empty pack used for a fast-forward is byte-identical to
+  `git pack-objects --stdout`.
+- **Merging** — a clean branch fast-forwards (no new objects); a diverged branch
+  gets a real two-parent merge commit, base first so `--first-parent` behaves.
 - **Permission SQL** — 19 integration tests run the real migrations against real
   D1 in a workerd isolate and exercise the collaborator, team, and org joins.
   The unit tests cover which grant wins; these cover whether the grants are
@@ -274,10 +304,6 @@ POST /api/…/IssueService/ListIssues          labels, assignees, and counts joi
 Nothing here is stubbed or faked — it is either absent, or blocked by a platform
 constraint that is named rather than worked around:
 
-- **Merge commits and squash** — only fast-forward merges are possible, and
-  **writing a wiki page from the web** is blocked by the same thing: Artifacts
-  has no object-write API, so creating a commit would mean building a packfile.
-  Both report this rather than failing opaquely.
 - **Wiki, release, and org pages** — repos, issues, pull requests, CI, search,
   the notification inbox, and settings all have pages; these three are API-only.
 - **SSR data prefetch** — pages render a shell and fetch over gRPC-web on
