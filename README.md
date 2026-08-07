@@ -6,10 +6,12 @@ storage, [CI Workflows](https://blog.cloudflare.com/ci-workflows/) for pipelines
 and [gRPC in Workers](https://blog.cloudflare.com/grpc-workers/) for the API and
 git-over-SSH.
 
-> **Status: runs locally, not deployed.** `pnpm dev` serves the UI and API, and
-> git routes return an actionable error because Artifacts is in closed beta on
-> this account. See [Blockers](#blockers) and
-> [What is and isn't built](#what-is-and-isnt-built).
+> **Status: feature-complete, runs locally, not deployed.** All 12 API services
+> and the web UI are implemented, with 208 tests passing. It is not deployed
+> because three of the Cloudflare features it is built on are in closed beta —
+> git storage, the CI container image, and inbound TCP. `pnpm dev` serves the UI
+> and API; git-backed views return an actionable error explaining the gate.
+> See [Blockers](#blockers) and [What is and isn't built](#what-is-and-isnt-built).
 
 ## Architecture
 
@@ -205,8 +207,19 @@ Containers, and Queues are all verified working.
 - **UI** — TanStack Start with SSR, gRPC-web over TanStack Query: repo list,
   owner page, create/import form, and a code browser with branch and tag
   switching, tree navigation, and a blob viewer.
-- **Connect services** — `UserService`, `RepoService`, `GitService`,
-  `IssueService`, `PullService`.
+- **All 12 Connect services** — User, Repo, Git, Issue, Pull, CI, Search, Org,
+  Webhook, Notification, Release, Wiki. Verified live: every one answers with a
+  real domain error (`unauthenticated`, `permission_denied`,
+  `failed_precondition`) rather than `unimplemented`.
+- **Webhooks** — queue-backed delivery with retry and a delivery log. Signatures
+  are HMAC-SHA256 over the exact bytes sent, checked against Node's `crypto` and
+  a known RFC vector, because a signature only helps if a receiver can
+  independently reproduce it.
+- **Notifications and activity** — the actor is never notified of their own
+  action, and repeat events on a thread collapse onto one row instead of stacking.
+- **Search** — FTS5 over repos, issues, and users. Tested that a private repo's
+  issue *titles* do not leak: the row is never rendered, but it would otherwise
+  come back in the response body.
 - **Fast-forward merge** — `receive-pack` with an empty packfile. Our empty pack
   is **byte-identical to `git pack-objects --stdout`**, which matters because git
   verifies its SHA-1 trailer.
@@ -258,8 +271,8 @@ POST /api/…/IssueService/ListIssues          labels, assignees, and counts joi
 
 ### Not built
 
-I ran out of room before finishing these. Nothing here is stubbed or faked —
-it is simply absent:
+Nothing here is stubbed or faked — it is either absent, or blocked by a platform
+constraint that is named rather than worked around:
 
 - **Merge commits and squash** — only fast-forward merges are possible, and
   **writing a wiki page from the web** is blocked by the same thing: Artifacts
@@ -269,11 +282,7 @@ it is simply absent:
   the notification inbox, and settings all have pages; these three are API-only.
 - **SSR data prefetch** — pages render a shell and fetch over gRPC-web on
   hydration. There are no route loaders, so the first paint has no content.
-- **Streaming CI logs in the UI** — `CiLogStream` and the server-streaming RPC
-  are defined, but the CI Worker does not yet write into the DO.
 - **`/internal/ssh/*` endpoints** — the container's half of the SSH contract.
-- **Worker integration tests** — the `worker` vitest project is configured but
-  has no tests; only the `unit` project is populated.
 
 ## Local development
 
@@ -281,7 +290,7 @@ it is simply absent:
 pnpm install
 pnpm generate                      # buf → src/gen
 pnpm exec wrangler d1 migrations apply gitflare --local
-pnpm test                          # 60 unit tests
+pnpm test                          # 208 tests (131 unit + 77 integration)
 pnpm typecheck
 ```
 
@@ -325,11 +334,15 @@ src/server/
   auth/             Access JWT, PATs, sessions, RBAC
   git/              pkt-line, refs, smart-HTTP proxy, content sniffing
   db/               D1 queries with the permission join
-  connect/          Connect router + service implementations
-  ci/               live log Durable Object
-ci/                 CI Worker: GitflareCI, plan emitter, run recording
+  connect/          Connect router + 12 service implementations
+  events/           webhook dispatch, notification and activity writes
+  diff/             Myers diff and hunk grouping
+  ci/               live log Durable Object, Sandbox class
+src/routes/         TanStack Start pages
+ci/                 CI Worker: Workflow path, Sandbox runner, plan emitter
 ssh/                gated SSH Worker + container
 packages/ci-config/ @gitflare/ci-config — the defineCI API
 migrations/         D1 schema
-test/unit/          60 tests
+test/unit/          131 tests — parsers, diffing, CI plans, signatures
+test/worker/        77 tests — real D1 in a workerd isolate, via the Connect wire
 ```
