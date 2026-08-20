@@ -512,7 +512,9 @@ function toRepo(
     // The raw Artifacts remote is only useful with a repo-scoped token, so it is
     // withheld from anyone who could not mint one anyway.
     artifactsRemote:
-      permission === Permission.ADMIN ? new ArtifactsClient(ctx.env).remoteFor(row.artifacts_name) : '',
+      permission === Permission.ADMIN
+        ? new ArtifactsClient(ctx.env).tryRemoteFor(row.artifacts_name)
+        : '',
     cloneUrl: `${ctx.origin}/${fullName}.git`,
     sshUrl: `git@${new URL(ctx.origin).hostname}:${fullName}.git`,
     isFork: row.is_fork === 1,

@@ -69,6 +69,20 @@ export class ArtifactsClient {
     return artifactsRemote(this.env.CLOUDFLARE_ACCOUNT_ID, this.namespace, name)
   }
 
+  /**
+   * The remote, or "" when the account id is missing or malformed. For the
+   * places the URL is only shown to the user: a display field must not be able
+   * to fail the whole RPC. Callers that actually fetch the URL use `remoteFor`,
+   * which still throws, because there a bad account id is not survivable.
+   */
+  tryRemoteFor(name: string): string {
+    try {
+      return this.remoteFor(name)
+    } catch {
+      return ''
+    }
+  }
+
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   async createRepo(

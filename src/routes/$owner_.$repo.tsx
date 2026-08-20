@@ -5,6 +5,7 @@ import { EntryType, type TreeEntry } from '~/gen/forge/v1/git_pb'
 import { RefKind } from '~/gen/forge/v1/common_pb'
 import { GateNotice } from '~/components/GateNotice'
 import { CloneBox } from '~/components/CloneBox'
+import { EmptyRepo } from '~/components/EmptyRepo'
 import { commitSubject, formatBytes, relativeTime, shortSha } from '~/lib/format'
 
 /**
@@ -55,22 +56,29 @@ function RepoPage() {
     enabled: repoQuery.isSuccess,
   })
 
+  // A repo with no commits has no refs, so every read below would resolve
+  // `main` against an empty advertisement and fail. Undefined until the ref
+  // list lands, which keeps these queries firing alongside it rather than
+  // behind it — the common case is a repo that does have commits.
+  const isEmpty = refsQuery.data ? refsQuery.data.refs.length === 0 : undefined
+  const readable = repoQuery.isSuccess && activeRef !== '' && isEmpty !== true
+
   const treeQuery = useQuery({
     queryKey: ['tree', owner, repo, activeRef, path],
     queryFn: () => api.git.getTree({ owner, repo, ref: activeRef, path, recursive: false }),
-    enabled: repoQuery.isSuccess && activeRef !== '' && file === undefined,
+    enabled: readable && file === undefined,
   })
 
   const blobQuery = useQuery({
     queryKey: ['blob', owner, repo, activeRef, file],
     queryFn: () => api.git.getBlob({ owner, repo, ref: activeRef, path: file! }),
-    enabled: repoQuery.isSuccess && activeRef !== '' && file !== undefined,
+    enabled: readable && file !== undefined,
   })
 
   const commitsQuery = useQuery({
     queryKey: ['commits', owner, repo, activeRef],
     queryFn: () => api.git.listCommits({ owner, repo, ref: activeRef, limit: 1 }),
-    enabled: repoQuery.isSuccess && activeRef !== '',
+    enabled: readable,
   })
 
   if (repoQuery.isError) return <GateNotice message={errorMessage(repoQuery.error)} />
@@ -100,40 +108,46 @@ function RepoPage() {
       )}
 
       <div className="repo-toolbar">
-        <select
-          value={activeRef}
-          onChange={(event) =>
-            // Changing ref resets the path: the same path rarely exists on both
-            // sides, and a stale one would render a confusing "not found".
-            navigate({ search: { ref: event.target.value } })
-          }
-          aria-label="Branch or tag"
-        >
-          {refsQuery.data?.refs
-            .filter((item) => item.kind === RefKind.BRANCH)
-            .map((item) => (
-              <option key={`b-${item.name}`} value={item.name}>
-                {item.name}
-                {item.isDefault ? ' (default)' : ''}
-              </option>
-            ))}
-          {refsQuery.data?.refs.some((item) => item.kind === RefKind.TAG) && (
-            <optgroup label="Tags">
-              {refsQuery.data.refs
-                .filter((item) => item.kind === RefKind.TAG)
-                .map((item) => (
-                  <option key={`t-${item.name}`} value={item.name}>
-                    {item.name}
-                  </option>
-                ))}
-            </optgroup>
-          )}
-        </select>
+        {isEmpty !== true && (
+          <select
+            value={activeRef}
+            onChange={(event) =>
+              // Changing ref resets the path: the same path rarely exists on both
+              // sides, and a stale one would render a confusing "not found".
+              navigate({ search: { ref: event.target.value } })
+            }
+            aria-label="Branch or tag"
+          >
+            {refsQuery.data?.refs
+              .filter((item) => item.kind === RefKind.BRANCH)
+              .map((item) => (
+                <option key={`b-${item.name}`} value={item.name}>
+                  {item.name}
+                  {item.isDefault ? ' (default)' : ''}
+                </option>
+              ))}
+            {refsQuery.data?.refs.some((item) => item.kind === RefKind.TAG) && (
+              <optgroup label="Tags">
+                {refsQuery.data.refs
+                  .filter((item) => item.kind === RefKind.TAG)
+                  .map((item) => (
+                    <option key={`t-${item.name}`} value={item.name}>
+                      {item.name}
+                    </option>
+                  ))}
+              </optgroup>
+            )}
+          </select>
+        )}
 
         <CloneBox cloneUrl={model.cloneUrl} sshUrl={model.sshUrl} />
       </div>
 
       {refsQuery.isError && <GateNotice message={errorMessage(refsQuery.error)} />}
+
+      {isEmpty === true && (
+        <EmptyRepo cloneUrl={model.cloneUrl} defaultBranch={model.defaultBranch} repo={model.name} />
+      )}
 
       {latest && (
         <div className="commit-bar">
@@ -146,15 +160,19 @@ function RepoPage() {
         </div>
       )}
 
-      <Breadcrumbs owner={owner} repo={repo} path={file ?? path} isFile={file !== undefined} />
+      {isEmpty !== true && (
+        <>
+          <Breadcrumbs owner={owner} repo={repo} path={file ?? path} isFile={file !== undefined} />
 
-      {file !== undefined ? (
-        <BlobView
-          query={blobQuery}
-          rawHref={`/${owner}/${repo}/raw/${encodeURIComponent(activeRef)}/${file}`}
-        />
-      ) : (
-        <TreeView query={treeQuery} />
+          {file !== undefined ? (
+            <BlobView
+              query={blobQuery}
+              rawHref={`/${owner}/${repo}/raw/${encodeURIComponent(activeRef)}/${file}`}
+            />
+          ) : (
+            <TreeView query={treeQuery} />
+          )}
+        </>
       )}
     </>
   )
