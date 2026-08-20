@@ -11,6 +11,7 @@ import {
   type GitAuthorization,
   type GitRoute,
 } from './git/http'
+import { handleAuthRoute, matchAuthRoute } from './auth/dev-login'
 import { atLeast } from './auth/rbac'
 import { emit, pushPayload } from './events/emit'
 import { handleInternalSsh, matchInternalSshRoute } from './ssh/internal'
@@ -47,6 +48,14 @@ export async function handleApiRequest(
   // Connect router so it cannot be shadowed by a future /api route.
   const sshRoute = matchInternalSshRoute(url)
   if (sshRoute) return handleInternalSsh(sshRoute, request, env)
+
+  // Sign-in and sign-out. Ahead of Connect so neither can be shadowed, and
+  // ahead of SSR so the page renders without a client bundle.
+  const authRoute = matchAuthRoute(url)
+  if (authRoute) {
+    const response = await handleAuthRoute(authRoute, request, env)
+    if (response) return response
+  }
 
   const connectResponse = await handleConnect(request, env, ctx)
   if (connectResponse) return connectResponse

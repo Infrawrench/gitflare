@@ -29,6 +29,12 @@ export interface Env {
 
   // ── Configuration ──────────────────────────────────────────────────────────
   ARTIFACTS_NAMESPACE: string
+  /**
+   * Enables the development sign-in route when "1". Set in `.dev.vars`, which
+   * Wrangler reads only locally and never uploads — so a deployed Worker cannot
+   * carry it. See auth/dev-login.ts.
+   */
+  GITFLARE_DEV_LOGIN?: string
   /** Cloudflare Access team domain, e.g. "acme.cloudflareaccess.com". */
   ACCESS_TEAM_DOMAIN: string
   /** Access application AUD tag. Required whenever ACCESS_TEAM_DOMAIN is set. */

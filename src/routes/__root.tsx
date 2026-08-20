@@ -90,9 +90,16 @@ function Header() {
               >
                 {data.user.login}
               </Link>
+              {/* Plain anchors: both are Worker routes, not client routes, and
+                  sign-out must reach the server to revoke the session. */}
+              <a href="/auth/logout" className="tab">
+                Sign out
+              </a>
             </>
           ) : (
-            <span className="muted">Not signed in</span>
+            <a href="/auth/dev-login" className="tab">
+              Sign in
+            </a>
           )}
         </nav>
       </div>

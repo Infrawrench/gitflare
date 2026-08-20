@@ -228,7 +228,7 @@ Verified against this account on 2026-08-06.
 | **Artifacts is closed beta** | `wrangler artifacts namespaces list` → `Access denied by feature gate [code: 10004]` | No git storage. Request access at [developers.cloudflare.com/artifacts](https://developers.cloudflare.com/artifacts/) |
 | **`@cloudflare/ci` is Artifacts-only** | Its `exports` map omits `SourceControlProvider`, so no custom backend is possible | CI cannot run without Artifacts either |
 | **Inbound TCP is private beta** | Needs sign-up *and* a Spectrum app on a zone you own | SSH is written but undeployable — see `ssh/README.md` |
-| **Access can't protect `workers.dev`** | Access applications require a zone you own | Web auth needs a custom domain; `wrangler dev` falls back to local sessions |
+| **Access can't protect `workers.dev`** | Access applications require a zone you own | Web sign-in needs a custom domain. Locally, `/auth/dev-login` issues a session instead — see [Signing in](#signing-in) |
 | **Artifacts has no local simulation** | `vite dev` opens a remote proxy session for the binding and dies: `You do not have access to use Artifacts [code: 10015]` | `wrangler.dev.jsonc` omits the binding so local dev works at all |
 
 That last row is worth spelling out. The Artifacts binding cannot be emulated by
@@ -355,16 +355,67 @@ nothing git-backed has run end to end. See [Blockers](#blockers).
 pnpm install
 pnpm generate                      # buf → src/gen
 pnpm exec wrangler d1 migrations apply gitflare --local
-pnpm test                          # 208 tests (131 unit + 77 integration)
+pnpm test                          # 245 tests (147 unit + 98 integration)
 pnpm typecheck
 ```
 
 `pnpm dev` serves the app at http://localhost:5173. Git-backed views show the
 Artifacts gate; everything else works.
 
+## Signing in
+
+Authentication has two halves, because no single mechanism covers both a browser
+and a git client.
+
+**Browsers** use Cloudflare Access. It terminates the login at the edge and
+forwards a signed assertion, which `auth/access.ts` verifies in full — signature,
+issuer, audience, expiry — before any identity is derived from it. Trusting that
+header unchecked would be an open door, since anything that reaches the origin
+directly could set it.
+
+**Git and API clients** use personal access tokens. Neither can complete an
+interactive SSO redirect, which is why `/api/*` and `*.git/*` need an Access
+**bypass** policy: the token is the credential on those paths.
+
+### Locally
+
+Access cannot run in front of `wrangler dev`, and cannot be attached to a
+`workers.dev` subdomain either, so there would otherwise be no way to establish a
+browser session at all. `/auth/dev-login` fills the gap: enter any name and it
+signs you in, creating the account if it does not exist. The first account
+created becomes the site administrator.
+
+```sh
+echo 'GITFLARE_DEV_LOGIN=1' > .dev.vars
+pnpm exec wrangler d1 migrations apply gitflare --local   # local D1 is a
+pnpm dev                                                  # separate database
+```
+
+Then open <http://localhost:5173/auth/dev-login>, or click **Sign in** in the
+header.
+
+This is a password-less back door, so it is gated three ways, checked per
+request:
+
+1. The request must arrive on a **loopback hostname**. This is the gate that does
+   not depend on configuration — a deployed Worker is dispatched by hostname and
+   never sees a request for `localhost`.
+2. `GITFLARE_DEV_LOGIN` must be `1`. It lives in `.dev.vars`. Note that the Vite
+   plugin copies that file into `dist/server/` and the test runner reads it too,
+   which is exactly why this is not the boundary on its own.
+3. Access must be unconfigured. Once `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are
+   set, the real path exists and this one closes.
+
+`test/worker/sign-in.test.ts` asserts each gate independently closes the route,
+issuing no session and creating no account.
+
+> **Known rough edge.** The header renders "Sign in" during SSR even for a signed-in
+> user, then corrects itself on hydration. Server-side rendering has no viewer
+> because route loaders were removed — see the note in `src/lib/connect.ts`.
+
 ## Deploying
 
-Not yet possible — Artifacts is gated. When access is granted:
+Live at <https://gitflare.astrid-906.workers.dev>. To stand up your own:
 
 1. **Create resources** and put the real IDs in `wrangler.jsonc`:
    ```sh
