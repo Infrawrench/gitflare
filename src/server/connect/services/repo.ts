@@ -24,6 +24,7 @@ import { ForgeError } from '../../errors'
 import { newId } from '../../ids'
 import type { Permission as RbacPermission } from '../../auth/rbac'
 import { contextFrom, type RequestContext } from '../router'
+import { reconcileRepoStatus } from '../../repo-status'
 
 /**
  * Repository lifecycle.
@@ -161,12 +162,16 @@ export function registerRepoService(router: ConnectRouter): void {
       const found = await findRepoForViewer(ctx.env.DB, request.owner, request.name, viewerOf(ctx))
       if (!found) throw ForgeError.notFound('Repository')
 
-      const extras = await loadViewerExtras(ctx, found.repo.id)
+      // Settle a pending import or fork here too, so the repo page stops
+      // warning that git will fail once it no longer will.
+      const repo = await reconcileRepoStatus(ctx.env, found.repo)
+
+      const extras = await loadViewerExtras(ctx, repo.id)
       return create(GetRepoResponseSchema, {
         repo: toRepo(
-          found.repo,
-          found.repo.owner_login,
-          found.repo.owner_kind,
+          repo,
+          repo.owner_login,
+          repo.owner_kind,
           toProtoPermission(found.access.permission),
           ctx,
           extras,

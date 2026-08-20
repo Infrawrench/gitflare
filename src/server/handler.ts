@@ -15,6 +15,7 @@ import { handleAuthRoute, matchAuthRoute } from './auth/dev-login'
 import { atLeast } from './auth/rbac'
 import { emit, pushPayload } from './events/emit'
 import { handleInternalSsh, matchInternalSshRoute } from './ssh/internal'
+import { reconcileRepoStatus } from './repo-status'
 
 /**
  * Non-SSR request handling, in priority order:
@@ -85,10 +86,12 @@ async function authorizeGit(route: GitRoute, request: Request, env: Env): Promis
 
   // Artifacts reports a repo as importing or forking until its objects land.
   // Serving git against one would hand the client an empty or partial history.
-  if (found.repo.status !== 'ready') {
+  // Nothing pushes the completion the other way, so ask before refusing.
+  const repo = await reconcileRepoStatus(env, found.repo)
+  if (repo.status !== 'ready') {
     throw new ForgeError(
       'failed_precondition',
-      `This repository is still ${found.repo.status}. Try again in a moment.`,
+      `This repository is still ${repo.status}. Try again in a moment.`,
     )
   }
 
@@ -102,8 +105,8 @@ async function authorizeGit(route: GitRoute, request: Request, env: Env): Promis
     permission: found.access.permission,
     canWrite: found.access.canWrite,
     userId: viewer.id,
-    artifactsName: found.repo.artifacts_name,
-    archived: found.repo.archived === 1,
+    artifactsName: repo.artifacts_name,
+    archived: repo.archived === 1,
   }
 }
 

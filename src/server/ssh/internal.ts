@@ -4,6 +4,7 @@ import { findRepoForViewer } from '../db/repos'
 import { ArtifactsClient } from '../artifacts/client'
 import { atLeast } from '../auth/rbac'
 import { timingSafeEqual } from '../auth/tokens'
+import { reconcileRepoStatus } from '../repo-status'
 
 /**
  * The main Worker's half of the SSH contract.
@@ -123,15 +124,16 @@ async function authorizeRepo(request: Request, env: Env): Promise<Response> {
   if (!atLeast(found.access.permission, scope === 'write' ? 'write' : 'read')) {
     return json({}, 403)
   }
-  if (found.repo.status !== 'ready') {
-    return json({ error: `Repository is still ${found.repo.status}` }, 409)
+  const repo = await reconcileRepoStatus(env, found.repo)
+  if (repo.status !== 'ready') {
+    return json({ error: `Repository is still ${repo.status}` }, 409)
   }
 
   const artifacts = new ArtifactsClient(env)
-  const token = await artifacts.mintToken(found.repo.artifacts_name, scope, 3600)
+  const token = await artifacts.mintToken(repo.artifacts_name, scope, 3600)
 
   return json({
-    remote: artifacts.remoteFor(found.repo.artifacts_name),
+    remote: artifacts.remoteFor(repo.artifacts_name),
     token,
     scope,
   })
