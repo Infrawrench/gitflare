@@ -35,15 +35,35 @@ declare global {
   var __GITFLARE_ORIGIN__: string | undefined
 }
 
-function baseUrl(): string {
-  if (import.meta.env.SSR) return `${globalThis.__GITFLARE_ORIGIN__ ?? 'http://localhost'}/api`
-  return '/api'
-}
+/**
+ * NOTE: there are no route loaders, and this SSR plumbing is currently unused.
+ *
+ * Prefetching during render requires the server to call its own API. On
+ * Cloudflare that cannot be done over HTTP: a Worker fetching its own hostname
+ * is not re-dispatched to the Worker, it falls through to the static-asset
+ * layer, so every such call returns `[unimplemented] HTTP 404`. This works in
+ * development, where Vite serves both halves in one process, which is exactly
+ * what made it look finished.
+ *
+ * Doing it properly means an in-process transport (`createRouterTransport`) with
+ * the per-request context threaded into the router — not a global, since Workers
+ * interleave requests in one isolate and a shared global would leak one user's
+ * context into another's render. That is the fix; it is not written yet.
+ *
+ * Sentinel origin used during SSR, rewritten per request by the fetch below.
+ *
+ * The transport is built once when this module is first evaluated, but the real
+ * origin is only known per request — so it cannot be baked into `baseUrl`. Doing
+ * that is a bug that hides in development, where Vite re-imports modules per
+ * request and the global happens to be set in time; in production the module is
+ * evaluated once at cold start and every SSR call goes to localhost.
+ */
+const SSR_SENTINEL = 'http://ssr.gitflare.invalid'
 
 const transport = createGrpcWebTransport({
-  baseUrl: baseUrl(),
+  baseUrl: import.meta.env.SSR ? `${SSR_SENTINEL}/api` : '/api',
   fetch: (input, init) =>
-    fetch(input, {
+    fetch(rewriteForSsr(input), {
       ...init,
       // Cookies carry the session, and Access's own cookie rides along.
       credentials: 'same-origin',
@@ -71,6 +91,22 @@ export const api = {
   release: client(ReleaseService),
   wiki: client(WikiService),
   org: client(OrgService),
+}
+
+/**
+ * Substitutes the live request origin for the sentinel, at call time.
+ *
+ * Resolved here rather than when the transport is created, because the transport
+ * outlives any single request.
+ */
+function rewriteForSsr(input: RequestInfo | URL): RequestInfo | URL {
+  if (!import.meta.env.SSR) return input
+  const origin = globalThis.__GITFLARE_ORIGIN__
+  if (!origin) return input
+
+  if (typeof input === 'string') return input.replace(SSR_SENTINEL, origin)
+  if (input instanceof URL) return new URL(input.toString().replace(SSR_SENTINEL, origin))
+  return new Request(input.url.replace(SSR_SENTINEL, origin), input)
 }
 
 /**

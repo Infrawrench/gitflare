@@ -15,7 +15,7 @@
     "ACCESS_TEAM_DOMAIN": "",
     // Access application AUD tag. Required whenever ACCESS_TEAM_DOMAIN is set.
     "ACCESS_AUD": "",
-    "GITFLARE_URL": "http://localhost:5173"
+    "GITFLARE_URL": "https://gitflare.astrid-906.workers.dev"
   },
 
   // Secrets (set with `wrangler secret put`):
@@ -28,14 +28,14 @@
     {
       "binding": "DB",
       "database_name": "gitflare",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "6d8788b0-a346-472f-b13c-925272f42378",
       "migrations_dir": "migrations"
     }
   ],
 
   "kv_namespaces": [
     // Caches the Cloudflare Access JWKS and other short-lived lookups.
-    { "binding": "CACHE", "id": "0000000000000000000000000000000f" }
+    { "binding": "CACHE", "id": "d27a1c5c71144970985e1075e21a36cd" }
   ],
 
   "r2_buckets": [{ "binding": "ASSETS_BUCKET", "bucket_name": "gitflare-assets" }],
@@ -57,5 +57,8 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["CiLogStream"] }],
 
-  "services": [{ "binding": "CI", "service": "gitflare-ci" }]
+  // Uncomment once gitflare-ci is deployed. The binding is optional in code —
+  // CIService.Rerun reports `unavailable` without it — so the main Worker can
+  // ship before the CI Worker exists.
+  // "services": [{ "binding": "CI", "service": "gitflare-ci" }]
 }

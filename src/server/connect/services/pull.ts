@@ -33,6 +33,7 @@ import { UserSchema } from '~/gen/forge/v1/user_pb'
 import { ArtifactsClient } from '../../artifacts/client'
 import { nextIssueNumber, requireRepo, type RepoRow, type RepoWithAccess } from '../../db/repos'
 import { ForgeError } from '../../errors'
+import { parseGitTime } from '../../artifacts/time'
 import { newId } from '../../ids'
 import { atLeast } from '../../auth/rbac'
 import { diffText } from '../../diff/hunks'
@@ -1186,7 +1187,7 @@ function toCommit(commit: ArtifactsCommitObject) {
     author: create(SignatureSchema, {
       name: commit.author.name,
       email: commit.author.email,
-      time: timestampFromDate(new Date(commit.author.time)),
+      time: timestampFromDate(parseGitTime(commit.author)),
     }),
     parents: commit.parents,
     treeSha: commit.treeHash,

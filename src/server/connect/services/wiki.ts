@@ -15,6 +15,7 @@ import { ArtifactsClient } from '../../artifacts/client'
 import { wikiArtifactsName } from '../../artifacts/names'
 import { requireRepo, type RepoWithAccess } from '../../db/repos'
 import { ForgeError } from '../../errors'
+import { parseGitTime } from '../../artifacts/time'
 import { buildCommit, buildTree, hashObject, type TreeEntry } from '../../git/objects'
 import { buildReceivePackRequest, parseReceivePackResponse, ZERO_SHA } from '../../git/receive-pack'
 import { atLeast } from '../../auth/rbac'
@@ -117,7 +118,7 @@ export function registerWikiService(router: ConnectRouter): void {
             author: create(SignatureSchema, {
               name: commit.author.name,
               email: commit.author.email,
-              time: timestampFromDate(new Date(commit.author.time)),
+              time: timestampFromDate(parseGitTime(commit.author)),
             }),
             parents: commit.parents,
             treeSha: commit.treeHash,

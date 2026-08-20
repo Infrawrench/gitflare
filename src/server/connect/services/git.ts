@@ -16,6 +16,7 @@ import { CommitSchema, RefKind, RefSchema, SignatureSchema } from '~/gen/forge/v
 import { ArtifactsClient, MAX_INLINE_BLOB_BYTES } from '../../artifacts/client'
 import { requireRepo } from '../../db/repos'
 import { ForgeError } from '../../errors'
+import { isUnknownTime, parseGitTime } from '../../artifacts/time'
 import { contextFrom, requestContextKey } from '../router'
 import { detectLanguage, isProbablyBinary } from '../../git/content'
 
@@ -259,11 +260,14 @@ function toCommit(commit: ArtifactsCommitObject) {
   })
 }
 
-function toSignature(signature: { name: string; email: string; time: string }) {
+function toSignature(signature: { name: string; email: string; time?: string }) {
+  const when = parseGitTime(signature)
   return create(SignatureSchema, {
     name: signature.name,
     email: signature.email,
-    time: timestampFromDate(new Date(signature.time)),
+    // Omitted when unknown: Artifacts returns no commit timestamps, and a
+    // rendered 1970 is worse than an absent date.
+    ...(isUnknownTime(when) ? {} : { time: timestampFromDate(when) }),
   })
 }
 

@@ -13,7 +13,6 @@ const recentRepos = {
 export const Route = createFileRoute('/')({
   // Warms the cache during SSR so the first paint has content. The component
   // below runs the same query and finds it already resolved.
-  loader: ({ context }) => context.queryClient.ensureQueryData(recentRepos),
   component: Home,
 })
 

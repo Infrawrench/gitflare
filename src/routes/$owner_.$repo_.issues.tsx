@@ -19,8 +19,6 @@ export const Route = createFileRoute('/$owner_/$repo_/issues')({
     ...(search.state === 'closed' ? { state: 'closed' as const } : {}),
     ...(typeof search.q === 'string' && search.q ? { q: search.q } : {}),
   }),
-  loader: ({ context, params }) =>
-    context.queryClient.ensureQueryData(issueList(params.owner, params.repo, 'open')),
   component: IssuesPage,
 })
 

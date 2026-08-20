@@ -24,13 +24,23 @@ declare global {
     type: 'blob' | 'tree' | 'commit'
   }
 
+  /**
+   * A commit as the binding returns it.
+   *
+   * Verified against the live service: a signature carries only `name` and
+   * `email` — there is **no timestamp**. An earlier version of this file declared
+   * `time: string`, which produced Invalid Dates and a
+   * `RangeError: NaN cannot be converted to a BigInt` from deep inside protobuf
+   * serialization. `time` is kept optional in case it is added, but nothing may
+   * depend on it being present.
+   */
   interface ArtifactsCommitObject {
     hash: string
     /** Root tree of this commit; the entry point for readTree(). */
     treeHash: string
     message: string
-    author: { name: string; email: string; time: string }
-    committer: { name: string; email: string; time: string }
+    author: { name: string; email: string; time?: string }
+    committer: { name: string; email: string; time?: string }
     parents: string[]
   }
 

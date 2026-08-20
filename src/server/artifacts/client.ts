@@ -169,11 +169,32 @@ export class ArtifactsClient {
 
   // ── Git objects (binding) ──────────────────────────────────────────────────
 
-  async log(name: string, opts: { ref?: string; limit?: number; offset?: number } = {}) {
+  /**
+   * Commit history.
+   *
+   * The binding's `log` is undeclared in the shipped types, so its exact return
+   * shape is not guaranteed. It was assumed to be `{ commits: [...] }`, which
+   * produced a silently empty history against the real service — the wrong
+   * shape reads as "no commits" rather than as an error. Both forms are handled
+   * now, and anything else throws instead of pretending the repo is empty.
+   */
+  async log(
+    name: string,
+    opts: { ref?: string; limit?: number; offset?: number } = {},
+  ): Promise<ArtifactsCommitObject[]> {
     return this.guard(async () => {
       const repo = await this.binding.get(name)
-      const result = await repo.log(opts)
-      return result?.commits ?? []
+      const result: unknown = await repo.log(opts)
+
+      if (result === null || result === undefined) return []
+      if (Array.isArray(result)) return result as ArtifactsCommitObject[]
+      if (typeof result === 'object' && Array.isArray((result as { commits?: unknown }).commits)) {
+        return (result as { commits: ArtifactsCommitObject[] }).commits
+      }
+      throw new ForgeError(
+        'internal',
+        `Artifacts log() returned an unrecognized shape: ${JSON.stringify(result).slice(0, 200)}`,
+      )
     })
   }
 

@@ -6,12 +6,18 @@ storage, [CI Workflows](https://blog.cloudflare.com/ci-workflows/) for pipelines
 and [gRPC in Workers](https://blog.cloudflare.com/grpc-workers/) for the API and
 git-over-SSH.
 
-> **Status: feature-complete, runs locally, not deployed.** All 12 API services
-> and the web UI are implemented, with 208 tests passing. It is not deployed
-> because three of the Cloudflare features it is built on are in closed beta —
-> git storage, the CI container image, and inbound TCP. `pnpm dev` serves the UI
-> and API; git-backed views return an actionable error explaining the gate.
-> See [Blockers](#blockers) and [What is and isn't built](#what-is-and-isnt-built).
+> **Status: deployed and verified.** <https://gitflare.astrid-906.workers.dev>
+>
+> Artifacts beta access landed, and the git layer now works end to end: `git
+> clone` and `git push` against the deployed proxy with an unmodified client.
+> See [Verified against the live service](#verified-against-the-live-service).
+>
+> All 12 API services and the web UI are implemented, with 232 tests passing.
+> Two things are still not runnable here: **CI**, whose container image is
+> amd64-only, and **git over SSH**, which needs inbound TCP plus Spectrum. File
+> and blob *content* also needs an account-scoped `Artifacts:Read` token that
+> only the dashboard can mint. See [Blockers](#blockers) and
+> [What is and isn't built](#what-is-and-isnt-built).
 
 ## Architecture
 
@@ -179,6 +185,40 @@ binding. Interpolated values (repo URL, branch, commit) are shell-quoted, and
 the checkout token is passed via `http.extraHeader` rather than in the URL, so it
 stays out of `ps`, `.git/config`, and git's error output.
 
+## Verified against the live service
+
+With beta access, the parts that were previously untestable were exercised
+against real Artifacts. Four assumptions turned out to be wrong; each is
+recorded where it was made.
+
+**Works as designed**
+
+- `git clone` / `git push` through the deployed smart-HTTP proxy, unmodified
+  client, PAT as the password.
+- The `owner--repo` encoding — `CreateRepo` produced Artifacts repo
+  `astrid--hello`.
+- Ref listing via the git protocol. The pkt-line parser handled a real empty-repo
+  advertisement, including dropping the zero-SHA capability carrier and reading
+  `symref=HEAD` — exactly what its unit tests predicted.
+- `readCommit` and `readTree` — the **undeclared** binding methods do exist at
+  runtime, as inferred from `@cloudflare/ci`'s source.
+- **The packfile writer.** A blob, tree, and commit built in Worker-compatible
+  code were pushed with `receive-pack` and accepted (`unpack ok`,
+  `ok refs/heads/main`), then cloned back with real git: matching commit hash,
+  correct content, `git fsck` clean.
+
+**Wrong assumptions, corrected**
+
+| Assumption | Reality |
+|---|---|
+| Commit signatures carry a timestamp | They carry only `name` and `email`. The declared `time: string` produced Invalid Dates and a `RangeError: NaN cannot be converted to a BigInt` from inside protobuf serialization. Timestamps are now omitted rather than rendered as 1970. |
+| `log()` returns `{ commits: [...] }` | Not that shape. Reading `.commits` off it yielded an empty history — a wrong shape reads as "no commits" rather than as an error. Both forms are handled and anything else throws. |
+| A repo-scoped token can read the REST content API | It cannot (401). File and blob content needs an account-scoped `Artifacts:Read` token, which only the dashboard can mint. |
+| SSR loaders can prefetch by calling our own API | A Worker fetching its own hostname is **not** re-dispatched to the Worker — it falls through to the static-asset layer and returns 404. This works in development, where Vite serves both halves in one process, which is what made it look finished. The loaders were removed; doing it properly needs an in-process transport with per-request context, which is noted in `src/lib/connect.ts`. |
+
+Also useful: **Artifacts namespaces are created implicitly** by creating the
+first repo in them — there is no `namespaces create` command.
+
 ## Blockers
 
 Verified against this account on 2026-08-06.
@@ -265,11 +305,6 @@ Containers, and Queues are all verified working.
 - **Search, inbox, settings, wiki, releases, and org pages** — full-text search;
   an inbox with unread filtering; token and SSH key management; a wiki with an
   editor that writes real commits; releases with assets; org members and teams.
-- **SSR data prefetch** — route loaders warm the query cache during render, so
-  the first paint carries content rather than a loading shell. Getting there
-  needed two fixes: an absolute API origin (a relative `/api` is meaningless on
-  the server) and `redirect: 'manual'`, because connect-web asks for
-  `redirect: 'error'` and workerd implements only `follow` and `manual`.
 - **SSH authorization endpoints** — the container's half of the contract.
   Authorization stays in the Worker, so a key gets exactly the access its owner
   has. An unset `INTERNAL_TOKEN` means *off*, never *unauthenticated*.

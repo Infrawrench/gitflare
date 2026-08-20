@@ -11,7 +11,6 @@ const ownerRepos = (owner: string) => ({
 })
 
 export const Route = createFileRoute('/$owner')({
-  loader: ({ context, params }) => context.queryClient.ensureQueryData(ownerRepos(params.owner)),
   component: OwnerPage,
 })
 
